@@ -51,6 +51,7 @@ def main(n_episodes: int = 2, steps_per_episode: int = 5) -> None:
     for ep in range(n_episodes):
         input(f"Episode {ep}: press Enter to run (Adicione os objetos na mesa para iniciar o eval.)...")
         before_frame = camera.capture(stats.output_dir / f"ep{ep}_before.png")
+        camera.start_recording(stats.output_dir / f"ep{ep}_debug.mp4", preview=True)
         start_time = time.perf_counter()
         for _ in range(steps_per_episode):
             inference_start = time.perf_counter()
@@ -63,6 +64,7 @@ def main(n_episodes: int = 2, steps_per_episode: int = 5) -> None:
 
         input(f"Episode {ep}: press Enter to run (Adicione os objetos ao Tot antes de finalizar a task.)...")
         after_frame = camera.capture(stats.output_dir / f"ep{ep}_after.png")
+        camera.stop_recording()
 
         #TODO: Criar o Predictor do modelo antes do for de episódios para não ter que carregar os pesos do modelo toda vez que for utilizar ele. 
         stats.success_rate(task_name, "model_segmentation", before_frame, after_frame, prompt=["cube"], rois=rois, debug_plots=True)

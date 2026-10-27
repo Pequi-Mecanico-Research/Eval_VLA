@@ -4,6 +4,8 @@ import json
 import numpy as np
 import time
 
+SAM_WEIGHTS = "src/vla_eval/success_detection/model_weights/sam3.pt"
+
 
 def mask_iou(a, b):
     inter = np.logical_and(a, b).sum()
@@ -27,7 +29,7 @@ def base_point(mask):
     return float(x_base), float(y_max)
 
 
-def count_objects(image: np.ndarray, predictor, roi, prompt: str, min_area=200, max_area=50_000):
+def count_objects_sam(image: np.ndarray, predictor, roi, prompt: str, min_area=200, max_area=50_000):
     predictor.set_image(image)
 
     # Consulta com vários prompts de texto
@@ -58,28 +60,25 @@ def count_objects(image: np.ndarray, predictor, roi, prompt: str, min_area=200, 
     return contagem, deteccoes
 
 
-def model_inference(before_image: np.ndarray, after_image: np.ndarray, prompt: list[str], rois): 
+def load_sam_predictor(weights: str = SAM_WEIGHTS) -> SAM3SemanticPredictor:
     #TODO: Change save_dir to global save path instead of relative.
     overrides = {
         "conf": 0.25,
         "task": "segment",
         "mode": "predict",
-        "model": "src/vla_eval/success_detection/model_weights/sam3.pt",
+        "model": weights,
         "quantize": 16,  # Usa FP16 para inferência mais rápida
         "save": True,
         "save_dir": "eval_results/sam3_detections",  # relative to the directory where the script 
     }
+    return SAM3SemanticPredictor(overrides=overrides)
 
-    predictor = SAM3SemanticPredictor(overrides=overrides)
 
+def sam_inference_image(image: np.ndarray, prompt: list[str], rois, predictor: SAM3SemanticPredictor | None = None) -> dict[str, int]:
+    """Counts the objects matching `prompt` inside each ROI of a single image.
+
+    Pass a `predictor` from `load_sam_predictor()` to reuse the weights across calls."""
+    predictor = predictor or load_sam_predictor()
     ROIS = {k: np.array(v, np.int32) for k, v in rois.items()}
-
-    inicio, det_ini = count_objects(before_image, predictor=predictor, roi=ROIS, prompt=prompt)
-    fim, det_fim = count_objects(after_image, predictor=predictor, roi=ROIS, prompt=prompt)
-
-    total_ini = sum(inicio.values())
-
-    print("Início:", inicio, "| Fim:", fim)
-    print("Tarefa completa:", fim["table"] == 0 and fim["container"] == total_ini)
-
-    return inicio, fim
+    counts, _ = count_objects_sam(image, predictor=predictor, roi=ROIS, prompt=prompt)
+    return counts

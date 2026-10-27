@@ -9,7 +9,7 @@ from pathlib import Path
 from ..base import EvalVLA, metric
 from ..config import SetupConfig
 from ..success_detection.background_subtraction import count_objects_in_rois, debug_pipeline
-from ..success_detection.model_segmentation import model_inference
+from ..success_detection.model_segmentation import load_sam_predictor, sam_inference_image
 
 
 def _round(value: float, precision: int) -> float:
@@ -44,7 +44,9 @@ class Statistical(EvalVLA):
     def success_rate(self, task_name: str, task_mode: str, before_frame: np.ndarray, after_frame: np.ndarray, prompt: list[str] = None, reference_frame: np.ndarray = None, rois = None, debug_plots: bool = False) -> dict[str, float]:
         if task_name == "Organize_the_table":    
             if task_mode == "model_segmentation":
-                before, after = model_inference(before_frame, after_frame, prompt, rois=rois)
+                predictor = load_sam_predictor()
+                before = sam_inference_image(before_frame, prompt, rois, predictor)
+                after = sam_inference_image(after_frame, prompt, rois, predictor)
                 self.success_rate_value = 0 < before["table"] == after["container"]  
 
             elif task_mode == "image_diff":
