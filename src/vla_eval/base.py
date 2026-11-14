@@ -24,7 +24,7 @@ class EvalVLA:
 
     def __init__(self, config: SetupConfig, output_dir: str | Path = "eval_results") -> None:
         self.config = config
-        self.output_dir = Path(output_dir) / config.experiment_name.replace("/", "-")
+        self.output_dir = Path(output_dir) / f"{config.experiment_name.replace('/', '-')}_{datetime.now():%d-%m_%H:%M:%S}"
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.json_path = self.output_dir / "results.json"
         self.csv_path = self.output_dir / "episodes.csv"

@@ -15,10 +15,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import os
-os.environ.setdefault("QT_QPA_FONTDIR", "/usr/share/fonts/truetype/dejavu")
-
-
 import cv2
+
+os.environ["QT_QPA_FONTDIR"] = "/usr/share/fonts/truetype/dejavu"
 import numpy as np
 
 from ..vision.roi_selector import Rois

@@ -15,12 +15,13 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Callable
 
 import os
-os.environ.setdefault("QT_QPA_FONTDIR", "/usr/share/fonts/truetype/dejavu")
-
-
 import cv2
+
+# cv2/config-3.py overwrites QT_QPA_FONTDIR on import, so it must be set after it.
+os.environ["QT_QPA_FONTDIR"] = "/usr/share/fonts/truetype/dejavu"
 import numpy as np
 
 Rois = dict[str, list[list[int]]]
@@ -88,6 +89,14 @@ class RoiSelector:
             self.add_point(x, y)
         elif event == cv2.EVENT_RBUTTONDOWN:
             self.undo()
+
+
+    @staticmethod
+    def load_or_create(rois_path: str | Path, names: list[str], image: np.ndarray | Callable[[], np.ndarray]) -> Rois:
+        if Path(rois_path).exists():
+            return load_rois(rois_path)
+        return create_rois(image() if callable(image) else image, names, rois_path)
+
 
     def run(self) -> Rois | None:
         """Open the window and block until all ROIs are drawn (or None on Esc)."""

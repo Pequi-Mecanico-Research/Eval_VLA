@@ -9,11 +9,13 @@ import argparse
 import threading
 import time
 from pathlib import Path
+from typing import Callable
 
 import os
-os.environ.setdefault("QT_QPA_FONTDIR", "/usr/share/fonts/truetype/dejavu")
-
 import cv2
+
+# cv2/config-3.py overwrites QT_QPA_FONTDIR on import, so it must be set after it.
+os.environ["QT_QPA_FONTDIR"] = "/usr/share/fonts/truetype/dejavu"
 import numpy as np
 
 
@@ -28,6 +30,7 @@ class Camera:
         self._stop_recording = threading.Event()
         self._latest_frame: np.ndarray | None = None
         self._record_error: Exception | None = None
+        self._preview_window: str | None = None
 
 
     def open(self) -> Camera:
@@ -79,7 +82,9 @@ class Camera:
         """Records the camera to a video file in a background thread, optionally showing a live preview window.
 
         Frames are written on a wall-clock timeline so the video duration matches real time even if the
-        camera delivers fewer frames per second than it advertises. Call `stop_recording()` to finish."""
+        camera delivers fewer frames per second than it advertises. The preview is drawn from the main thread
+        (Qt cannot show windows from other threads): call `show_preview()` or `wait_for_enter()` while recording.
+        Call `stop_recording()` to finish."""
         if self._capture is None:
             raise RuntimeError("Camera is not open; call open() or use `with Camera(...)`")
         if self._recorder is not None:
@@ -98,9 +103,35 @@ class Camera:
         self._stop_recording.clear()
         self._record_error = None
         self._latest_frame = None
-        self._recorder = threading.Thread(target=self._record_loop, args=(writer, fps, preview, window_name), daemon=True)
+        self._preview_window = window_name if preview else None
+        self._recorder = threading.Thread(target=self._record_loop, args=(writer, fps), daemon=True)
         self._recorder.start()
         return save_path
+
+
+    @property
+    def latest_frame(self) -> np.ndarray | None:
+        return self._latest_frame
+
+
+    def show_preview(self, wait_ms: int = 1) -> None:
+        if self._preview_window is None or self._latest_frame is None:
+            return
+        cv2.imshow(self._preview_window, self._latest_frame)
+        cv2.waitKey(wait_ms)
+
+
+    def wait_for_enter(self, prompt: str = "", on_tick: Callable[[], None] | None = None) -> None:
+        done = threading.Event()
+        threading.Thread(target=lambda: (input(prompt), done.set()), daemon=True).start()
+        while not done.is_set():
+            if on_tick is not None:
+                on_tick()
+                done.wait(0.03)
+            elif self._preview_window is None:
+                done.wait(0.05)
+            else:
+                self.show_preview(wait_ms=30)
 
 
     def stop_recording(self) -> None:
@@ -109,11 +140,15 @@ class Camera:
         self._stop_recording.set()
         self._recorder.join()
         self._recorder = None
+        if self._preview_window is not None:
+            cv2.destroyWindow(self._preview_window)
+            cv2.waitKey(1)
+            self._preview_window = None
         if self._record_error is not None:
             raise RuntimeError("Recording failed") from self._record_error
 
 
-    def _record_loop(self, writer: cv2.VideoWriter, fps: float, preview: bool, window_name: str) -> None:
+    def _record_loop(self, writer: cv2.VideoWriter, fps: float) -> None:
         written = 0
         start = time.perf_counter()
         try:
@@ -127,17 +162,10 @@ class Camera:
                 for _ in range(max(due - written, 1)):
                     writer.write(frame)
                     written += 1
-
-                if preview:
-                    cv2.imshow(window_name, frame)
-                    cv2.waitKey(1)
         except Exception as exc:
             self._record_error = exc
         finally:
             writer.release()
-            if preview:
-                cv2.destroyWindow(window_name)
-                cv2.waitKey(1)
 
 
     def close(self) -> None:

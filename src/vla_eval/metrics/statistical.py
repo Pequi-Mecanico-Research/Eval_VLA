@@ -9,7 +9,7 @@ from pathlib import Path
 from ..base import EvalVLA, metric
 from ..config import SetupConfig
 from ..success_detection.background_subtraction import count_objects_in_rois, debug_pipeline
-from ..success_detection.model_segmentation import load_sam_predictor, sam_inference_image
+from ..success_detection.sam3_inference import ObjectDetection
 
 
 def _round(value: float, precision: int) -> float:
@@ -28,6 +28,7 @@ class Statistical(EvalVLA):
 """
     def __init__(self, config: SetupConfig, output_dir: str | Path = "eval_results"):
         super().__init__(config, output_dir)
+        self.detector: ObjectDetection | None = None
         self.success_rate_value: bool = None
         self.task_completion_sec_list: list = []
         self.task_completion_sec_mean: float = None
@@ -41,12 +42,12 @@ class Statistical(EvalVLA):
 
 
     @metric
-    def success_rate(self, task_name: str, task_mode: str, before_frame: np.ndarray, after_frame: np.ndarray, prompt: list[str] = None, reference_frame: np.ndarray = None, rois = None, debug_plots: bool = False) -> dict[str, float]:
+    def success_rate(self, task_name: str, task_mode: str, before_frame: np.ndarray, after_frame: np.ndarray, prompt: list[str] = None, reference_frame: np.ndarray = None, rois = None, debug_plots: bool = True) -> dict[str, float]:
         if task_name == "Organize_the_table":    
             if task_mode == "model_segmentation":
-                predictor = load_sam_predictor()
-                before = sam_inference_image(before_frame, prompt, rois, predictor)
-                after = sam_inference_image(after_frame, prompt, rois, predictor)
+                self.detector = self.detector or ObjectDetection("image")
+                before = self.detector.run(before_frame, prompt, rois)
+                after = self.detector.run(after_frame, prompt, rois)
                 self.success_rate_value = 0 < before["table"] == after["container"]  
 
             elif task_mode == "image_diff":

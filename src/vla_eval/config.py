@@ -9,9 +9,9 @@ class SetupConfig:
     """
     Environment and robot parameters that must be reported with every result.
     
-    Robot embodiment (manufacturer, model, DoF (Degrees of Freedom), end-effector type).
+    Robot embodiment (manufacturer, model, DoF (Degrees of Freedom)).
 
-    Camera configuration (number, mounting positions, resolution, whether wrist cameras are used).
+    Camera configuration (number, mounting positions, resolution).
 
     Action space definition (joint position, joint velocity, end-effector pose, or hybrid).
 
@@ -19,7 +19,7 @@ class SetupConfig:
 
     Object set (number of objects, material categories, whether objects are seen or unseen during training).
 
-    Scene layout (workspace dimensions, fixture positions, lighting conditions).
+    Scene layout (fixture positions, lighting conditions).
 
     Reset procedure (manual, semi-automatic, or automatic; degree of randomization per trial).
 

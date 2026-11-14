@@ -78,7 +78,6 @@ def sample(driver, log: list[dict]) -> None:
         "ext": list(j.external_efforts),
         "comp": list(j.compensation_efforts),
         "cart": list(out.cartesian.positions),
-        # Same quantities read through the driver's dedicated getters.
         "ext_all": list(driver.get_all_external_efforts()),
         "comp_all": list(driver.get_all_compensation_efforts()),
         "cart_ext": list(driver.get_cartesian_external_efforts()),
@@ -106,7 +105,8 @@ def summarize(log: list[dict]) -> None:
 
 def connect_driver(ip: str = "192.168.1.2") -> trossen_arm.TrossenArmDriver:
     driver = trossen_arm.TrossenArmDriver()
-    driver.configure(trossen_arm.Model.wxai_v0, trossen_arm.StandardEndEffector.wxai_v0_base, ip, False)
+    driver.configure(trossen_arm.Model.wxai_v0, trossen_arm.StandardEndEffector.wxai_v0_base, ip, False, timeout=10)
+    #driver.set_arm_external_efforts()
     return driver
 
 
