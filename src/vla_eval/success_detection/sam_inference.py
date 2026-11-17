@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
+from ultralytics.models.fastsam import FastSAMPredictor
 
 import cv2
 
@@ -35,7 +36,7 @@ def frames_to_intervals(signal, fps, limiar_on=0.5, limiar_off=0.3, min_dur_s=1,
 
 
 class ObjectDetection:
-    def __init__(self, mode: str, weights: str = SAM_WEIGHTS):
+    def __init__(self, mode: str, model: str="sam2", weights: str = SAM_WEIGHTS):
         overrides = {"task": "segment", 
                      "mode": "predict", 
                      "model": weights, 
@@ -48,9 +49,13 @@ class ObjectDetection:
 
             self.predictor = SAM3SemanticPredictor(overrides={**overrides, "conf": 0.25})
         elif mode == "video":
-            from ultralytics.models.sam import SAM3VideoSemanticPredictor
+            if model == "sam2":
+                from ultralytics.models.sam import SAM2VideoPredictor
+                self.predictor = SAM2VideoPredictor(overrides={**overrides, "conf": 0.70, "imgsz": 640})
+            else:
+                from ultralytics.models.sam import SAM3VideoSemanticPredictor
+                self.predictor = SAM3VideoSemanticPredictor(overrides={**overrides, "conf": 0.70, "imgsz": 640})
 
-            self.predictor = SAM3VideoSemanticPredictor(overrides={**overrides, "conf": 0.70, "imgsz": 640})
         else:
             raise ValueError(f"mode must be 'image' or 'video', got {mode!r}")
         

@@ -31,6 +31,10 @@ class SetupConfig:
 
     Task Name (choose one of the tasks defined in "Statistical" class or create a new one)
 
+    Perturbation type (robustness evaluation): list with the perturbations applied during the trials, any of
+    "object", "layout", "camera", "lighting", "background", "initial_state", "sensor_noise".
+    None means a nominal (unperturbed) run.
+
     """
 
     #TODO:Deixar as possíveis variáveis dentro mapping mais rigidas no formato.
@@ -46,3 +50,4 @@ class SetupConfig:
     model_name: str
     experiment_name: str
     task_name: str
+    perturbation_type: list[str] | None = None

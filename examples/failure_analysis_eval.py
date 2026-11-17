@@ -24,6 +24,7 @@ def main(video: str, window_s: float = 30.0, motion_threshold: float = 0.02) -> 
         model_name="openpi-finetune",
         experiment_name="Changing_cube_locations",
         task_name="Organize_the_table",
+        perturbation_type=None, 
     )
 
 

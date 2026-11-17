@@ -32,6 +32,7 @@ def main(n_episodes: int = 2, steps_per_episode: int = 100, ip: str = "192.168.1
         model_name="openpi-finetune",
         experiment_name="Changing_cube_locations",
         task_name="Organize_the_table",
+        perturbation_type=None,  
     )
 
     operation = Operation(config, episodes=n_episodes)

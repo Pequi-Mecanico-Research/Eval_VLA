@@ -43,6 +43,7 @@ def main(n_episodes: int = 2, steps_per_episode: int = 5, viewer: str = "rerun")
         model_name="openpi-finetune",
         experiment_name="Changing_cube_locations",
         task_name=task_name,
+        perturbation_type=None,  
     )
 
     stats = Statistical(config)

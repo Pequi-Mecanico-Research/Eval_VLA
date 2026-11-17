@@ -8,7 +8,7 @@ import trossen_arm
 
 from ..base import EvalVLA, metric
 from ..config import SetupConfig
-from ..success_detection.sam3_inference import ObjectDetection
+from ..success_detection.sam_inference import ObjectDetection
 
 HUMAN_PROMPTS = ["hand", "human arm"]
 

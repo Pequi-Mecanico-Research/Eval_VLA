@@ -9,7 +9,7 @@ from pathlib import Path
 from ..base import EvalVLA, metric
 from ..config import SetupConfig
 from ..success_detection.background_subtraction import count_objects_in_rois, debug_pipeline
-from ..success_detection.sam3_inference import ObjectDetection
+from ..success_detection.sam_inference import ObjectDetection
 
 
 def _round(value: float, precision: int) -> float:
