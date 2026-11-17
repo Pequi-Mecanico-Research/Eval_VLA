@@ -9,6 +9,7 @@ import argparse
 
 from vla_eval.config import SetupConfig
 from vla_eval.metrics.failure_analysis import FailureAnalysis
+import time
 
 
 def main(video: str, window_s: float = 30.0, motion_threshold: float = 0.02) -> None:
@@ -22,19 +23,19 @@ def main(video: str, window_s: float = 30.0, motion_threshold: float = 0.02) -> 
         reset_procedure="VLA",
         success_criteria="objects inside the tots",
         model_name="openpi-finetune",
-        experiment_name="Changing_cube_locations",
+        experiment_name="Failure_Planning2_30frames",
         task_name="Organize_the_table",
         perturbation_type=None, 
     )
 
+    start_time = time.perf_counter()
 
-    analysis = FailureAnalysis(config, video, window_s=window_s, motion_threshold=motion_threshold)
+    analysis = FailureAnalysis(config, video, window_s=window_s, debug_video=True)
 
     print(f"\n{video}")
     print("  failure type      :", analysis.failure_type)
-    print("  arm motion std    :", analysis.arm_motion_std, f"(threshold {motion_threshold})")
-    print("  arm detected ratio:", analysis.arm_detected_ratio)
     print("  results           :", analysis._results)
+    print("  inference_time           :", time.perf_counter() - start_time)
 
     analysis.end_episode()
 

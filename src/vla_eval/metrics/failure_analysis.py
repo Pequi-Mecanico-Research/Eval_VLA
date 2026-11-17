@@ -5,6 +5,8 @@ from pathlib import Path
 
 from ..base import EvalVLA, metric
 from ..config import SetupConfig
+from ..success_detection.gripper_tracking import track_gripper
+from ..success_detection.vlm_failure import classify_failure
 
 
 class FailureType(str, Enum):
@@ -18,7 +20,7 @@ class FailureType(str, Enum):
 
 
 class FailureAnalysis(EvalVLA):
-    """Failure analysis (R).
+    """Failure analysis.
 
     Perception errors: the policy misidentifies or fails to locate the target object.
 
@@ -35,48 +37,56 @@ class FailureAnalysis(EvalVLA):
     Hardware or calibration failures: the trial fails due to mechanical, sensor, or calibration issues unrelated to the policy.
     """
 
-    def __init__(self, config: SetupConfig, output_dir: str | Path = "eval_results"):
+    def __init__(self, config: SetupConfig, video_path: str | Path, output_dir: str | Path = "eval_results",
+                window_s: float = 30.0, min_detected_ratio: float = 0.5, vlm_model: str = "qwen3.5:latest",
+                vlm_host: str = "http://localhost:11434", vlm_frames: int = 30,
+                debug_video: bool = False, vlm_timeout_s: float = 300.0,
+                vlm_num_ctx: int = 16384):
         super().__init__(config, output_dir)
+
+        self.vlm_num_ctx = vlm_num_ctx
+        self.vlm_timeout_s = vlm_timeout_s
+        self.debug_video = debug_video
+        self.video_path = video_path
+        self.window_s = window_s
         self.failure_counts: dict[FailureType, int] = {t: 0 for t in FailureType}
         self.episodes_evaluated: int = 0
+        self.failure_type: FailureType | None = None
+        self.vlm_model = vlm_model
+        self.vlm_host = vlm_host
+        self.vlm_frames = vlm_frames
+
+        self.main()
+
+
+    def main(self) -> FailureType | None:
+        """Asks the VLM which failure type the episode video shows and sets `failure_type`."""
+        self.episodes_evaluated += 1
+        self.failure_type = None
+
+        name = self.vlm_failure_type()["vlm_failure_type"]
+
+        if name is not None:
+            self.failure_type = FailureType(name)
+            self.failure_counts[self.failure_type] += 1
+
+        return self.failure_type
 
 
     @metric
-    def perception_errors(self) -> dict[str, float]:
-        pass
+    def vlm_failure_type(self) -> dict[str, str | None]:
+        """Samples frames from the last `window_s` seconds of the video and asks the Ollama VLM for the failure type."""
+        name, reply = classify_failure(
+            self.video_path,
+            task=self.config.task_name,
+            success_criteria=self.config.success_criteria,
+            window_s=self.window_s,
+            n_frames=self.vlm_frames,
+            model=self.vlm_model,
+            host=self.vlm_host,
+            timeout_s=self.vlm_timeout_s,
+            num_ctx=self.vlm_num_ctx,
+            debug_video_path=self.output_dir / f"vlm_frames_ep{self._episode}.mp4" if self.debug_video else None,
+        )
+        return {"vlm_failure_type": name, "vlm_model": self.vlm_model, "vlm_raw_reply": reply.strip()}
 
-
-    @metric
-    def language_understanding_errors(self) -> dict[str, float]:
-        pass
-
-
-    @metric
-    def planning_errors(self) -> dict[str, float]:
-        pass
-
-
-    @metric
-    def grasping_errors(self) -> dict[str, float]:
-        pass
-
-
-    @metric
-    def control_errors(self) -> dict[str, float]:
-        pass
-
-
-    @metric
-    def recovery_failures(self) -> dict[str, float]:
-        pass
-
-
-    @metric
-    def hardware_failures(self) -> dict[str, float]:
-        pass
-
-
-    @metric
-    def failure_distribution(self) -> dict[str, float]:
-        """Fraction of failed trials attributed to each FailureType."""
-        pass
