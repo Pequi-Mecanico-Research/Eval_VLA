@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
+from pathlib import Path
 from ultralytics.models.fastsam import FastSAMPredictor
 
 import cv2
@@ -10,7 +11,11 @@ os.environ["QT_QPA_FONTDIR"] = "/usr/share/fonts/truetype/dejavu"
 import numpy as np
 from torchvision.ops import nms
 
-SAM_WEIGHTS = "src/vla_eval/success_detection/model_weights/sam3.pt"
+WEIGHTS_DIR = Path(__file__).parent / "model_weights"
+SAM_WEIGHTS = {
+    "sam2": WEIGHTS_DIR / "sam2.1_b.pt", 
+    "sam3": WEIGHTS_DIR / "sam3.pt",
+}
 
 
 def frames_to_intervals(signal, fps, limiar_on=0.5, limiar_off=0.3, min_dur_s=1, juntar_gap_s=1.5):
@@ -36,15 +41,21 @@ def frames_to_intervals(signal, fps, limiar_on=0.5, limiar_off=0.3, min_dur_s=1,
 
 
 class ObjectDetection:
-    def __init__(self, mode: str, model: str="sam2", weights: str = SAM_WEIGHTS):
-        overrides = {"task": "segment", 
-                     "mode": "predict", 
-                     "model": weights, 
+    def __init__(self, mode: str, model: str = "sam2", weights: str | Path | None = None):
+        """`model` ("sam2" or "sam3") picks the predictor and its default weights; `weights` overrides the file."""
+        if model not in SAM_WEIGHTS:
+            raise ValueError(f"model must be one of {list(SAM_WEIGHTS)}, got {model!r}")
+
+        overrides = {"task": "segment",
+                     "mode": "predict",
+                     "model": str(weights or SAM_WEIGHTS[model]),
                      "quantize": 16,
                      "save": True,
-                     "save_dir": f"eval_results/sam3_results/sam3_{mode}_detections_{datetime.now():%d-%m_%H:%M:%S}"}
-        
+                     "save_dir": f"eval_results/{model}_results/{model}_{mode}_detections_{datetime.now():%d-%m_%H:%M:%S}"}
+
         if mode == "image":
+            if model != "sam3":
+                raise ValueError("image mode only supports model='sam3' (text-prompted SAM3SemanticPredictor)")
             from ultralytics.models.sam import SAM3SemanticPredictor
 
             self.predictor = SAM3SemanticPredictor(overrides={**overrides, "conf": 0.25})
