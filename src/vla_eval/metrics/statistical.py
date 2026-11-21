@@ -8,6 +8,7 @@ from pathlib import Path
 
 from ..base import EvalVLA, metric
 from ..config import SetupConfig
+from ..plots import plot_statistical
 from ..success_detection.background_subtraction import count_objects_in_rois, debug_pipeline
 from ..success_detection.sam_inference import ObjectDetection
 
@@ -26,8 +27,9 @@ class Statistical(EvalVLA):
 
     Inference latency on the deployed hardware (mean and p95, in milliseconds).
 """
-    def __init__(self, config: SetupConfig, output_dir: str | Path = "eval_results"):
-        super().__init__(config, output_dir)
+    def __init__(self, config: SetupConfig, output_dir: str | Path = "eval_results",
+                 run_dir: str | Path | None = None, name: str | None = None):
+        super().__init__(config, output_dir, run_dir, name)
         self.detector: ObjectDetection | None = None
         self.success_rate_value: bool = None
         self.task_completion_sec_list: list = []
@@ -41,11 +43,15 @@ class Statistical(EvalVLA):
         self.inference_latency_sec_p95: float = None
 
 
+    def _save_graphs(self) -> None:
+        plot_statistical(self.csv_path, self.output_dir, self.config.experiment_name)
+
+
     @metric
-    def success_rate(self, task_name: str, task_mode: str, before_frame: np.ndarray, after_frame: np.ndarray, prompt: list[str] = None, reference_frame: np.ndarray = None, rois = None, debug_plots: bool = True) -> dict[str, float]:
+    def success_rate(self, task_name: str, task_mode: str, before_frame: np.ndarray, after_frame: np.ndarray, prompt: list[str] = None, reference_frame: np.ndarray = None, rois = None, model: str = "sam3", debug_plots: bool = True) -> dict[str, float]:
         if task_name == "Organize_the_table":    
             if task_mode == "model_segmentation":
-                self.detector = self.detector or ObjectDetection("image")
+                self.detector = self.detector or ObjectDetection("image", model=model)
                 before = self.detector.run(before_frame, prompt, rois)
                 after = self.detector.run(after_frame, prompt, rois)
                 self.success_rate_value = 0 < before["table"] == after["container"]  

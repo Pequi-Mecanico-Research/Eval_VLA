@@ -8,6 +8,7 @@ import trossen_arm
 
 from ..base import EvalVLA, metric
 from ..config import SetupConfig
+from ..plots import plot_operation
 from ..success_detection.sam_inference import ObjectDetection
 
 HUMAN_PROMPTS = ["hand", "human arm"]
@@ -34,8 +35,9 @@ class Operation(EvalVLA):
     Reset failure rate (fraction of trials in which the reset procedure itself fails or introduces bias).
     """
 
-    def __init__(self, config: SetupConfig, episodes: int, output_dir: str | Path = "eval_results"):
-        super().__init__(config, output_dir)
+    def __init__(self, config: SetupConfig, episodes: int, output_dir: str | Path = "eval_results",
+                 run_dir: str | Path | None = None, name: str | None = None):
+        super().__init__(config, output_dir, run_dir, name)
         self.episodes = episodes
 
         self.human_detector: ObjectDetection | None = None
@@ -66,11 +68,15 @@ class Operation(EvalVLA):
         self.jerks_accelerations: list[list[float]] = []
 
 
+    def _save_graphs(self) -> None:
+        plot_operation(self.csv_path, self.output_dir, self.config.experiment_name)
+
+
     @metric
-    def human_intervention_rate(self, video_path: str | Path, precision: int = 3, prompt: list[str] = HUMAN_PROMPTS, **detection_kwargs) -> dict[str, float]:
+    def human_intervention_rate(self, video_path: str | Path, precision: int = 3, model: str = "sam3", prompt: list[str] = HUMAN_PROMPTS, **detection_kwargs) -> dict[str, float]:
         """"""
 
-        self.human_detector = self.human_detector or ObjectDetection("video")
+        self.human_detector = self.human_detector or ObjectDetection("video", model=model)
         intervals = self.human_detector.run(video_path, prompt, **detection_kwargs)
 
         self.human_intervention_count += bool(intervals)

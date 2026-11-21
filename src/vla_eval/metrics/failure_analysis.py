@@ -5,6 +5,7 @@ from pathlib import Path
 
 from ..base import EvalVLA, metric
 from ..config import SetupConfig
+from ..plots import plot_failure_analysis
 from ..success_detection.gripper_tracking import track_gripper
 from ..success_detection.vlm_failure import classify_failure
 
@@ -41,8 +42,8 @@ class FailureAnalysis(EvalVLA):
                 window_s: float = 30.0, min_detected_ratio: float = 0.5, vlm_model: str = "qwen3.5:latest",
                 vlm_host: str = "http://localhost:11434", vlm_frames: int = 30,
                 debug_video: bool = False, vlm_timeout_s: float = 300.0,
-                vlm_num_ctx: int = 16384):
-        super().__init__(config, output_dir)
+                vlm_num_ctx: int = 16384, run_dir: str | Path | None = None, name: str | None = None):
+        super().__init__(config, output_dir, run_dir, name)
 
         self.vlm_num_ctx = vlm_num_ctx
         self.vlm_timeout_s = vlm_timeout_s
@@ -57,6 +58,10 @@ class FailureAnalysis(EvalVLA):
         self.vlm_frames = vlm_frames
 
         self.main()
+
+
+    def _save_graphs(self) -> None:
+        plot_failure_analysis(self.csv_path, self.output_dir, self.config.experiment_name)
 
 
     def main(self) -> FailureType | None:

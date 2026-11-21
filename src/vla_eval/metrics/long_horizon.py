@@ -4,6 +4,7 @@ from pathlib import Path
 
 from ..base import EvalVLA, metric
 from ..config import SetupConfig
+from ..plots import plot_long_horizon
 
 
 class LongHorizon(EvalVLA):
@@ -16,10 +17,15 @@ class LongHorizon(EvalVLA):
     Distribution of failure positions along the subtask sequence (e.g., histogram showing at which step failures concentrate).
     """
 
-    def __init__(self, config: SetupConfig, output_dir: str | Path = "eval_results"):
-        super().__init__(config, output_dir)
+    def __init__(self, config: SetupConfig, output_dir: str | Path = "eval_results",
+                 run_dir: str | Path | None = None, name: str | None = None):
+        super().__init__(config, output_dir, run_dir, name)
         self.completed_lengths: list[int] = []
         self.failure_positions: list[int] = []
+
+
+    def _save_graphs(self) -> None:
+        plot_long_horizon(self.csv_path, self.output_dir, self.config.experiment_name)
 
 
     @metric
