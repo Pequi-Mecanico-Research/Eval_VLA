@@ -48,7 +48,7 @@ class Statistical(EvalVLA):
 
 
     @metric
-    def success_rate(self, task_name: str, task_mode: str, before_frame: np.ndarray, after_frame: np.ndarray, prompt: list[str] = None, reference_frame: np.ndarray = None, rois = None, model: str = "sam3", debug_plots: bool = True) -> dict[str, float]:
+    def success_rate(self, task_name: str, task_mode: str, before_frame: np.ndarray, after_frame: np.ndarray, prompt: list[str] = None, reference_frame: np.ndarray = None, rois = None, model: str = "sam3", debug_plots: bool = True, weights: str | Path | None = None) -> dict[str, float]:
         """Checks whether the policy moved the objects from the table into the container.
 
         Modes (`task_mode`):
@@ -67,6 +67,10 @@ class Statistical(EvalVLA):
             rois: Regions of interest where the objects start (table) and end (container).
             model: Segmentation model used in "model_segmentation".
             debug_plots: Saves the debug images of "image_diff".
+            weights: Path to the weights file (e.g. `sam3.pt`) of `model`, used in "model_segmentation".
+                If None, looks for `model_weights/<model>.pt` inside the package, which is not shipped
+                with the pip install; download it first (see the root README). Only read the first time
+                the detector is created.
 
         Returns:
             dict with `successes` (bool), `objects_on_table_before` and
@@ -74,7 +78,7 @@ class Statistical(EvalVLA):
         """
         if task_name == "Organize_the_table":    
             if task_mode == "model_segmentation":
-                self.detector = self.detector or ObjectDetection("image", model=model)
+                self.detector = self.detector or ObjectDetection("image", model=model, weights=weights)
                 before = self.detector.run(before_frame, prompt, rois)
                 after = self.detector.run(after_frame, prompt, rois)
                 self.success_rate_value = 0 < before["table"] == after["container"]  

@@ -42,7 +42,14 @@ def frames_to_intervals(signal, fps, limiar_on=0.5, limiar_off=0.3, min_dur_s=1,
 
 class ObjectDetection:
     def __init__(self, mode: str, model: str = "sam2", weights: str | Path | None = None):
-        """`model` ("sam2" or "sam3") picks the predictor and its default weights; `weights` overrides the file."""
+        """Segmentation predictor used by the success and human-intervention metrics.
+
+        Args:
+            mode: "image" (only with model="sam3") or "video".
+            model: "sam2" or "sam3"; picks the predictor and its default weights.
+            weights: Path to the weights file. If None, uses `model_weights/<model>.pt` inside the package,
+                which is not shipped with the pip install.
+        """
         if model not in SAM_WEIGHTS:
             raise ValueError(f"model must be one of {list(SAM_WEIGHTS)}, got {model!r}")
 

@@ -34,6 +34,7 @@ Estrutura usada para cada método:
   | `rois` | Regiões de interesse onde os objetos começam (mesa) e terminam (recipiente). |
   | `model` | Modelo de segmentação usado no modo `"model_segmentation"`. |
   | `debug_plots` | Salva as imagens de debug do modo `"image_diff"`. |
+  | `weights` | Caminho do arquivo de pesos (ex.: `sam3.pt`) de `model`, usado em `"model_segmentation"`. Se `None`, procura em `model_weights/<model>.pt` dentro do pacote, que não vem no `pip install`; baixe em https://huggingface.co/facebook/sam3 (ver README da raiz). Só é lido na primeira vez que o detector é criado. |
 
 - **Retorno:** dict com `successes` (bool), `objects_on_table_before` e `objects_in_container_after` (int, ou `None` para tarefas desconhecidas).
 
@@ -81,9 +82,10 @@ Estrutura usada para cada método:
   | Variável | Descrição |
   |---|---|
   | `video_path` | Vídeo do episódio. |
-  | `precision` | Casas decimais usadas para arredondar os valores retornados. |
   | `model` | Modelo de segmentação usado para encontrar o humano no vídeo. |
   | `prompt` | Descrições do que conta como intervenção humana (ex.: `"hand"`, `"human arm"`). |
+  | `precision` | Casas decimais usadas para arredondar os valores retornados. |
+  | `weights` | Caminho do arquivo de pesos (ex.: `sam3.pt`) de `model`. Se `None`, procura em `model_weights/<model>.pt` dentro do pacote, que não vem no `pip install`; baixe em https://huggingface.co/facebook/sam3 (ver README da raiz). Só é lido na primeira vez que o detector é criado. |
   | `**detection_kwargs` | Argumentos extras repassados para `ObjectDetection.run`. |
 
 - **Retorno:** dict com `human_interventions` (número de intervalos com humano), `human_intervention_sec` (tempo total com humano), `human_intervention_intervals` (lista de (início, fim) em segundos) e `human_intervention_rate` (fração dos `episodes` com ao menos uma intervenção até agora).

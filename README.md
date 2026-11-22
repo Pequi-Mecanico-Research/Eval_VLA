@@ -24,6 +24,20 @@ uv pip install eval_vla
 
 Em seguida, somente implemente as métricas dentro do loop de avaliação da sua política, como mostrado em [Uso como repositório local](#uso-como-repositório-local) e nos arquivos de `examples/`.
 
+### Pesos do modelo (SAM3)
+
+O pacote instalado via pip **não inclui os pesos** do SAM3. Eles são necessários nas métricas `success_rate` (modo `"model_segmentation"`) e `human_intervention_rate`.
+
+1. Baixe o arquivo `sam3.pt` no repositório da Meta no Hugging Face: https://huggingface.co/facebook/sam3 (o acesso é restrito: é preciso solicitar acesso na página do modelo e estar logado).
+2. Passe o caminho do arquivo no parâmetro `weights` das métricas:
+
+```python
+stats.success_rate(..., model="sam3", weights="weights/sam3.pt")
+operation.human_intervention_rate(video_path, model="sam3", weights="weights/sam3.pt")
+```
+
+Se `weights` não for informado, o pacote procura em `model_weights/<modelo>.pt` dentro do próprio pacote, que só existe ao rodar o repositório com os pesos colocados lá.
+
 ## Uso como repositório local
 
 Código utilizado como demonstração de uso em algum repositório que implemente uma política de VLA e gostariamos de avalia-lá:
@@ -78,6 +92,7 @@ run_dir = Path("eval_results") / f"{config.experiment_name}_{datetime.now():%d-%
 
 ```python
 n_episodes, steps_per_episode = 5, 50  # número de episódios e passos da política por episódio
+SAM3_WEIGHTS = "weights/sam3.pt"  # pesos do SAM3, baixados de https://huggingface.co/facebook/sam3
 
 stats = Statistical(config, run_dir=run_dir, name="statistical")  # name prefixa os arquivos da família
 operation = Operation(config, episodes=n_episodes, run_dir=run_dir, name="operation")
@@ -119,9 +134,9 @@ for ep in range(n_episodes):
     camera.stop_recording()
 
     # sucesso medido comparando antes/depois com segmentação (SAM3) dentro das ROIs
-    stats.success_rate(config.task_name, "model_segmentation", before_frame, after_frame, prompt=["Cube", "black clock cube"], rois=rois, model="sam3")
+    stats.success_rate(config.task_name, "model_segmentation", before_frame, after_frame, prompt=["Cube", "black clock cube"], rois=rois, model="sam3", weights=SAM3_WEIGHTS)
     operation.reset_failure_rate(driver)
-    operation.human_intervention_rate(video_path, prompt=["hand", "human arm"], model="sam3")  # detecta mão/braço no vídeo
+    operation.human_intervention_rate(video_path, prompt=["hand", "human arm"], model="sam3", weights=SAM3_WEIGHTS)  # detecta mão/braço no vídeo
 
     subtasks_completed = [bool(stats.success_rate_value)]  # aqui a tarefa tem uma única subtarefa
     long_horizon.subtask_completion_rate(subtasks_completed)

@@ -73,7 +73,7 @@ class Operation(EvalVLA):
 
 
     @metric
-    def human_intervention_rate(self, video_path: str | Path, model: str = "sam3", prompt: list[str] = HUMAN_PROMPTS, precision: int = 3, **detection_kwargs) -> dict[str, float]:
+    def human_intervention_rate(self, video_path: str | Path, model: str = "sam3", prompt: list[str] = HUMAN_PROMPTS, precision: int = 3, weights: str | Path | None = None, **detection_kwargs) -> dict[str, float]:
         """Detects whether a human entered the scene during the episode, i.e. needed to intervene manually.
 
         Call once per episode, on the recorded video.
@@ -83,6 +83,9 @@ class Operation(EvalVLA):
             model: Segmentation model used to find the human in the video.
             prompt: Descriptions of what counts as a human intervention (e.g. "hand", "human arm").
             precision: Decimal places used to round the returned values.
+            weights: Path to the weights file (e.g. `sam3.pt`) of `model`. If None, looks for
+                `model_weights/<model>.pt` inside the package, which is not shipped with the pip install;
+                download it first (see the root README). Only read the first time the detector is created.
             **detection_kwargs: Extra arguments passed to `ObjectDetection.run`.
 
         Returns:
@@ -91,7 +94,7 @@ class Operation(EvalVLA):
             `human_intervention_rate` (fraction of the `episodes` with at least one intervention so far).
         """
 
-        self.human_detector = self.human_detector or ObjectDetection("video", model=model)
+        self.human_detector = self.human_detector or ObjectDetection("video", model=model, weights=weights)
         intervals = self.human_detector.run(video_path, prompt, **detection_kwargs)
 
         self.human_intervention_count += bool(intervals)
