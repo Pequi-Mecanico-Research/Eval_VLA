@@ -24,7 +24,7 @@ class OpenCVViewer:
 class RerunViewer:
     preview = False
 
-    def __init__(self, camera: Camera, session_name: str = "vla_eval") -> None:
+    def __init__(self, camera: Camera, session_name: str = "eval_vla") -> None:
         import rerun as rr
 
         self.rr = rr

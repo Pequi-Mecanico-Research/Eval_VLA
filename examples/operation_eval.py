@@ -3,10 +3,10 @@ from __future__ import annotations
 import argparse
 import time
 
-from vla_eval.config import SetupConfig
-from vla_eval.metrics.operation import Operation
-from vla_eval.vision.camera import Camera
-from vla_eval.vision.viewer import make_viewer
+from eval_vla.config import SetupConfig
+from eval_vla.metrics.operation import Operation
+from eval_vla.vision.camera import Camera
+from eval_vla.vision.viewer import make_viewer
 from examples.widowx_driver_probe import connect_driver
 
 

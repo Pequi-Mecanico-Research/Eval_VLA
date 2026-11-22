@@ -6,11 +6,11 @@ import random
 import time
 from pathlib import Path
 
-from vla_eval.config import SetupConfig
-from vla_eval.metrics.statistical import Statistical
-from vla_eval.vision.camera import Camera, load_image
-from vla_eval.vision.viewer import make_viewer
-from vla_eval.vision.roi_selector import RoiSelector
+from eval_vla.config import SetupConfig
+from eval_vla.metrics.statistical import Statistical
+from eval_vla.vision.camera import Camera, load_image
+from eval_vla.vision.viewer import make_viewer
+from eval_vla.vision.roi_selector import RoiSelector
 
 CALIBRATION_DIR = Path(__file__).resolve().parents[1] / "calibration"
 

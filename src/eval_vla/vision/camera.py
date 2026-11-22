@@ -1,6 +1,6 @@
 """Frame capture from a camera connected to the computer (USB / V4L2) with OpenCV.
 
-    python -m vla_eval.vision.camera --device 0 --out empty_table.png
+    python -m eval_vla.vision.camera --device 0 --out empty_table.png
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
 [project]
-name = "eval-vla"
-version = "0.2.2"
+name = "eval_vla"
+version = "0.2.3"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -16,3 +16,6 @@ dependencies = [
     "trossen_arm>=1.9.0,<1.10.0",
     "ultralytics>=8.4.183,<9",
 ]
+
+[tool.setuptools.package-data]
+eval_vla = ["metrics/models/*.urdf"]

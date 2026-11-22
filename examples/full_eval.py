@@ -13,14 +13,14 @@ from pathlib import Path
 from examples.operation_eval import JOINT_NAMES
 from examples.statistical_eval_image_diff import CALIBRATION_DIR, fake_policy, load_or_capture_reference
 from examples.widowx_driver_probe import connect_driver
-from vla_eval.config import SetupConfig
-from vla_eval.metrics.failure_analysis import FailureAnalysis
-from vla_eval.metrics.long_horizon import LongHorizon
-from vla_eval.metrics.operation import Operation
-from vla_eval.metrics.statistical import Statistical
-from vla_eval.vision.camera import Camera
-from vla_eval.vision.roi_selector import RoiSelector
-from vla_eval.vision.viewer import make_viewer
+from eval_vla.config import SetupConfig
+from eval_vla.metrics.failure_analysis import FailureAnalysis
+from eval_vla.metrics.long_horizon import LongHorizon
+from eval_vla.metrics.operation import Operation
+from eval_vla.metrics.statistical import Statistical
+from eval_vla.vision.camera import Camera
+from eval_vla.vision.roi_selector import RoiSelector
+from eval_vla.vision.viewer import make_viewer
 
 
 def main(n_episodes: int = 5, steps_per_episode: int = 50, ip: str = "192.168.1.2", window_s: float = 30.0,

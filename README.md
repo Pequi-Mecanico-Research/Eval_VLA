@@ -19,7 +19,7 @@ uv sync
 Ao entrar em um repositório que implementa uma política de VLA, basta instalar o pacote no ambiente dele:
 
 ```bash
-uv pip install eval-vla
+uv pip install eval_vla
 ```
 
 Em seguida, somente implemente as métricas dentro do loop de avaliação da sua política, como mostrado em [Uso como repositório local](#uso-como-repositório-local) e nos arquivos de `examples/`.
@@ -44,14 +44,14 @@ from pathlib import Path
 from examples.operation_eval import JOINT_NAMES
 from examples.statistical_eval_image_diff import CALIBRATION_DIR, fake_policy, load_or_capture_reference
 from examples.widowx_driver_probe import connect_driver
-from vla_eval.config import SetupConfig
-from vla_eval.metrics.failure_analysis import FailureAnalysis
-from vla_eval.metrics.long_horizon import LongHorizon
-from vla_eval.metrics.operation import Operation
-from vla_eval.metrics.statistical import Statistical
-from vla_eval.vision.camera import Camera
-from vla_eval.vision.roi_selector import RoiSelector
-from vla_eval.vision.viewer import make_viewer
+from eval_vla.config import SetupConfig
+from eval_vla.metrics.failure_analysis import FailureAnalysis
+from eval_vla.metrics.long_horizon import LongHorizon
+from eval_vla.metrics.operation import Operation
+from eval_vla.metrics.statistical import Statistical
+from eval_vla.vision.camera import Camera
+from eval_vla.vision.roi_selector import RoiSelector
+from eval_vla.vision.viewer import make_viewer
 
 start_eval_time = time.perf_counter()  # marca o início da avaliação completa
 
@@ -152,7 +152,7 @@ Ao final, a pasta `run_dir` contém, para cada família, `<name>_results.json`, 
 
 ## Adicionando uma nova classe de métricas
 
-1. Criar `src/vla_eval/metrics/<nome>.py` herdando de `EvalVLA`:
+1. Criar `src/eval_vla/metrics/<nome>.py` herdando de `EvalVLA`:
 
    ```python
    from pathlib import Path

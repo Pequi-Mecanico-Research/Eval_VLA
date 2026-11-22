@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import argparse
 
-from vla_eval.config import SetupConfig
-from vla_eval.metrics.failure_analysis import FailureAnalysis
+from eval_vla.config import SetupConfig
+from eval_vla.metrics.failure_analysis import FailureAnalysis
 import time
 
 

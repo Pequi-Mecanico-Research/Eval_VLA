@@ -1,7 +1,7 @@
 """Interactive drawing of polygonal Regions Of Interest (ROIs) on an image.
 
-    python -m vla_eval.vision.roi_selector --image empty_table.png --names table container --out rois.json
-    python -m vla_eval.vision.roi_selector --camera 0 --names table container --out rois.json
+    python -m eval_vla.vision.roi_selector --image empty_table.png --names table container --out rois.json
+    python -m eval_vla.vision.roi_selector --camera 0 --names table container --out rois.json
 
 Controls (OpenCV window):
     left click        add vertex
