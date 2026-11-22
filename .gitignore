@@ -5,6 +5,5 @@ dist/
 .venv/
 .pytest_cache/
 eval_results/
-src/vla_eval/success_detection/model_weights/sam3.pt
-src/vla_eval/success_detection/model_weights/hand_landmarker.task
 .env
+**/model_weights/
