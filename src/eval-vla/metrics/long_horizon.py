@@ -30,15 +30,44 @@ class LongHorizon(EvalVLA):
 
     @metric
     def subtask_completion_rate(self, subtasks_completed: list[bool]) -> dict[str, float]:
+        """Fraction of the individual subtasks completed, independent of the full sequence succeeding.
+
+        Call once per episode.
+
+        Args:
+            subtasks_completed: One bool per subtask, in execution order; True if that subtask was completed.
+
+        Returns:
+            dict with the subtask completion rate. Not implemented yet.
+        """
         pass
 
 
     @metric
     def average_completed_sequence_length(self, subtasks_completed: list[bool]) -> dict[str, float]:
+        """Average number of consecutive subtasks completed from the start of the sequence (CALVIN-style).
+
+        Call once per episode.
+
+        Args:
+            subtasks_completed: One bool per subtask, in execution order; True if that subtask was completed.
+
+        Returns:
+            dict with the average completed sequence length. Not implemented yet.
+        """
         pass
 
 
     @metric
     def failure_position_distribution(self, subtasks_completed: list[bool]) -> dict[str, float]:
-        """Histogram of the subtask index (1-based) at which each trial first failed."""
+        """Histogram of the subtask index (1-based) at which each trial first failed.
+
+        Call once per episode.
+
+        Args:
+            subtasks_completed: One bool per subtask, in execution order; True if that subtask was completed.
+
+        Returns:
+            dict with the distribution of failure positions. Not implemented yet.
+        """
         pass

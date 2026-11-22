@@ -49,6 +49,29 @@ class Statistical(EvalVLA):
 
     @metric
     def success_rate(self, task_name: str, task_mode: str, before_frame: np.ndarray, after_frame: np.ndarray, prompt: list[str] = None, reference_frame: np.ndarray = None, rois = None, model: str = "sam3", debug_plots: bool = True) -> dict[str, float]:
+        """Checks whether the policy moved the objects from the table into the container.
+
+        Modes (`task_mode`):
+            - "model_segmentation": counts the objects in `prompt` inside the ROIs with `model`,
+              in `before_frame` and `after_frame`. Needs `prompt` and `rois`.
+            - "image_diff": counts the objects by comparing each frame with `reference_frame`
+              (empty table). Needs `reference_frame` and `rois`.
+
+        Args:
+            task_name: Task being evaluated (currently only "Organize_the_table").
+            task_mode: "model_segmentation" or "image_diff".
+            before_frame: Table image right before the policy acts.
+            after_frame: Table image right after the policy acts.
+            prompt: Names/descriptions of the objects to segment.
+            reference_frame: Empty-table image used as baseline in "image_diff".
+            rois: Regions of interest where the objects start (table) and end (container).
+            model: Segmentation model used in "model_segmentation".
+            debug_plots: Saves the debug images of "image_diff".
+
+        Returns:
+            dict with `successes` (bool), `objects_on_table_before` and
+            `objects_in_container_after` (int, or None for unknown tasks).
+        """
         if task_name == "Organize_the_table":    
             if task_mode == "model_segmentation":
                 self.detector = self.detector or ObjectDetection("image", model=model)
@@ -77,6 +100,19 @@ class Statistical(EvalVLA):
 
     @metric
     def task_completion_time(self, start_time: float, end_time: float, precision: int = 3) -> dict[str, float]:
+        """Measures how long the policy took to finish the episode and accumulates statistics across episodes.
+
+        Call once per episode, after the policy stops acting.
+
+        Args:
+            start_time: Episode start, from `time.perf_counter()`, in seconds.
+            end_time: Episode end, from `time.perf_counter()`, in seconds.
+            precision: Decimal places used to round the returned values.
+
+        Returns:
+            dict with `task_completion_sec_list` (duration of this episode), and
+            `task_completion_sec_mean`, `_median` and `_std` over all episodes so far, in seconds.
+        """
         self.task_completion_sec_list.append(end_time - start_time)
         self.task_completion_sec_mean = np.mean(self.task_completion_sec_list)
         self.task_completion_sec_median = np.median(self.task_completion_sec_list)
@@ -92,7 +128,22 @@ class Statistical(EvalVLA):
 
     @metric
     def inference_latency(self, inference_time_start: float, inference_time_end: float, steps_per_episode: int, precision: int = 3) -> dict[str, float]:
-        if steps_per_episode > len(self.inference_latency_sec_list) - 1:
+        """Measures the policy inference time of one step and accumulates statistics over the episode.
+
+        Call once per policy step, wrapping only the policy call.
+
+        Args:
+            inference_time_start: Time right before the policy call, from `time.perf_counter()`, in seconds.
+            inference_time_end: Time right after the policy call, from `time.perf_counter()`, in seconds.
+            steps_per_episode: Number of policy steps in one episode, used to restart the accumulated
+                latencies for the next episode.
+            precision: Decimal places used to round the returned values.
+
+        Returns:
+            dict with `inference_latency_sec_list` (latency of this step), and
+            `inference_latency_sec_mean`, `_median`, `_std` and `_p95` of the accumulated latencies, in seconds.
+        """
+        if len(self.inference_latency_sec_list) >= steps_per_episode:
             self.inference_latency_sec_list = []
 
         self.inference_latency_sec_list.append(inference_time_end - inference_time_start)

@@ -39,7 +39,7 @@ class FailureAnalysis(EvalVLA):
     """
 
     def __init__(self, config: SetupConfig, video_path: str | Path, output_dir: str | Path = "eval_results",
-                window_s: float = 30.0, min_detected_ratio: float = 0.5, vlm_model: str = "qwen3.5:latest",
+                window_s: float = 30.0, vlm_model: str = "qwen3.5:latest",
                 vlm_host: str = "http://localhost:11434", vlm_frames: int = 30,
                 debug_video: bool = False, vlm_timeout_s: float = 300.0,
                 vlm_num_ctx: int = 16384, run_dir: str | Path | None = None, name: str | None = None):
@@ -80,7 +80,16 @@ class FailureAnalysis(EvalVLA):
 
     @metric
     def vlm_failure_type(self) -> dict[str, str | None]:
-        """Samples frames from the last `window_s` seconds of the video and asks the Ollama VLM for the failure type."""
+        """Asks a vision-language model (VLM, via Ollama) which failure type the episode video shows.
+
+        Samples `vlm_frames` frames from the last `window_s` seconds of the video and sends them to the VLM
+        together with the task name and success criteria from the config. Runs automatically when
+        `FailureAnalysis` is created; its inputs are the constructor arguments, not method arguments.
+
+        Returns:
+            dict with `vlm_failure_type` (a `FailureType` name, or None if the reply was not recognized),
+            `vlm_model` and `vlm_raw_reply` (the model answer as text).
+        """
         name, reply = classify_failure(
             self.video_path,
             task=self.config.task_name,

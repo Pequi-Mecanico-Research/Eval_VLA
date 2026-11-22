@@ -73,8 +73,23 @@ class Operation(EvalVLA):
 
 
     @metric
-    def human_intervention_rate(self, video_path: str | Path, precision: int = 3, model: str = "sam3", prompt: list[str] = HUMAN_PROMPTS, **detection_kwargs) -> dict[str, float]:
-        """"""
+    def human_intervention_rate(self, video_path: str | Path, model: str = "sam3", prompt: list[str] = HUMAN_PROMPTS, precision: int = 3, **detection_kwargs) -> dict[str, float]:
+        """Detects whether a human entered the scene during the episode, i.e. needed to intervene manually.
+
+        Call once per episode, on the recorded video.
+
+        Args:
+            video_path: Video of the episode.
+            model: Segmentation model used to find the human in the video.
+            prompt: Descriptions of what counts as a human intervention (e.g. "hand", "human arm").
+            precision: Decimal places used to round the returned values.
+            **detection_kwargs: Extra arguments passed to `ObjectDetection.run`.
+
+        Returns:
+            dict with `human_interventions` (number of time intervals with a human), `human_intervention_sec`
+            (total time with a human), `human_intervention_intervals` (list of (start, end) in seconds) and
+            `human_intervention_rate` (fraction of the `episodes` with at least one intervention so far).
+        """
 
         self.human_detector = self.human_detector or ObjectDetection("video", model=model)
         intervals = self.human_detector.run(video_path, prompt, **detection_kwargs)
@@ -92,7 +107,30 @@ class Operation(EvalVLA):
     @metric
     def collision_rate(self, driver: trossen_arm.TrossenArmDriver, mode: str = "gmo", thresholds: list[float] = COLLISION_RESIDUAL_THRESHOLDS,
                        gain: float = GMO_GAIN, precision: int = 3) -> dict:
-        """"""
+        """Detects unintended contact (collision) during the episode from the arm joint torques.
+
+        Call at every control step. It keeps the peak of the signal per joint during the episode and flags
+        a collision when any peak exceeds its threshold.
+
+        Modes (`mode`):
+            - "gmo": generalized momentum observer. The residual estimates the external torque using the
+              arm dynamic model (URDF) and the measured positions, velocities and efforts.
+            - "driver": uses the external efforts already reported by the arm driver.
+
+        Args:
+            driver: Connected Trossen arm driver, read at each call.
+            mode: "gmo" or "driver".
+            thresholds: Maximum accepted absolute value per arm joint, in Nm.
+            gain: Observer gain K_O of the "gmo" mode, in 1/s. Higher values react faster but add noise.
+            precision: Decimal places used to round the returned values.
+
+        Returns:
+            dict with `collision_mode`, `collision_detected` (this episode), `collision_rate` (fraction of the
+            `episodes` with a collision so far), `collision_thresholds` and `collision_values` (peak per joint).
+
+        Raises:
+            ValueError: If `mode` is not "gmo" or "driver".
+        """
 
         output = driver.get_robot_output()
 
@@ -147,7 +185,23 @@ class Operation(EvalVLA):
     def jerks_rate(self, driver: trossen_arm.TrossenArmDriver, joint_jerk_thresholds: list[float] = JOINT_JERK_THRESHOLDS,
                    linear_jerk_threshold: float = LINEAR_JERK_THRESHOLD,
                    angular_jerk_threshold: float = ANGULAR_JERK_THRESHOLD, precision: int = 3) -> dict:
-        """"""
+        """Detects jerky motion (abrupt change of acceleration) during the episode.
+
+        Call at every control step. The jerk is the derivative of the accelerations along the episode;
+        it keeps the peak per joint and for the end effector, and flags the episode when any peak
+        exceeds its threshold.
+
+        Args:
+            driver: Connected Trossen arm driver, read at each call.
+            joint_jerk_thresholds: Maximum accepted jerk per joint, in rad/s^3 (m/s^3 for the gripper).
+            linear_jerk_threshold: Maximum accepted end-effector linear jerk, in m/s^3.
+            angular_jerk_threshold: Maximum accepted end-effector angular jerk, in rad/s^3.
+            precision: Decimal places used to round the returned values.
+
+        Returns:
+            dict with `jerks_detected` (this episode), `jerks_rate` (fraction of the episodes with jerks so far),
+            `jerks_thresholds` and `jerks_values` (peaks per joint, then linear and angular).
+        """
 
         output = driver.get_robot_output()
         joint_accelerations = list(output.joint.all.accelerations)
@@ -190,7 +244,20 @@ class Operation(EvalVLA):
 
     @metric
     def reset_failure_rate(self, driver: trossen_arm.TrossenArmDriver, sleep_positions: list[float] = SLEEP_POSITIONS, tolerance: float = 0.1, precision: int = 3) -> dict[str, float]:
-        """"""
+        """Checks whether the arm is back at the reset (sleep) pose, i.e. whether the reset procedure worked.
+
+        Call once per episode, when the arm should be at the reset pose.
+
+        Args:
+            driver: Connected Trossen arm driver, read at the call.
+            sleep_positions: Expected joint positions of the reset pose, in the driver units.
+            tolerance: Maximum accepted absolute error per joint; above it the reset counts as failed.
+            precision: Decimal places used to round the returned values.
+
+        Returns:
+            dict with `reset_failed` (this episode), `reset_max_joint_error`, `reset_joint_errors` (per joint)
+            and `reset_failure_rate` (fraction of episodes with a failed reset so far).
+        """
         positions = list(driver.get_all_positions())
 
         joint_errors = [abs(p - s) for p, s in zip(positions, sleep_positions)]
