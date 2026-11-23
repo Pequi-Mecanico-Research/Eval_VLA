@@ -217,7 +217,7 @@ Todos os métodos recebem o mesmo `episode` (dict, por exemplo o `.npz` salvo pe
 - **Variáveis de entrada:** `episode["actions"]`.
 - **Retorno:** dict com `action_wasserstein_std_max`, `action_wasserstein_std_mean`, `action_frac_outside_max` e `action_worst_dim`.
 
-Referência no dataset `widowxai-organize-the-table-effort-v21`: o máximo por episódio de `wasserstein_std` nos 50 episódios de treino tem p50 = 0.66, p95 = 0.94 e máx = 1.52.
+Referência no dataset `widowxai-organize-the-table-effort-v21`: o máximo por episódio de `wasserstein_std` nos 50 episódios de treino tem p50 = 0.65, p95 = 0.98 e máx = 1.49 (estado e ação). Valores acima disso num episódio de produção indicam drift maior que a variação entre episódios de treino.
 
 ---
 
