@@ -165,6 +165,15 @@ camera.close()
 
 Ao final, a pasta `run_dir` contém, para cada família, `<name>_results.json`, `<name>_episodes.csv` e os gráficos gerados a partir do CSV.
 
+### Drift pela linha de comando
+
+```bash
+uv run python -m eval_vla.metrics.drift build <dataset_lerobot_v21> reference.npz
+uv run python -m eval_vla.metrics.drift check reference.npz logs/episode_<data>.npz --out eval_results
+```
+
+`build` lê `data/**/*.parquet` e `meta/` do dataset de treino. `check` lê o `.npz` salvo pelo cliente, imprime `contract`, `state_drift` e `action_drift` e grava JSON, CSV e `drift_detail.json` em `--out`. Detalhes em `src/eval_vla/metrics/README.md`.
+
 ## Adicionando uma nova classe de métricas
 
 1. Criar `src/eval_vla/metrics/<nome>.py` herdando de `EvalVLA`:

@@ -183,6 +183,44 @@ Estrutura usada para cada método:
 
 ---
 
+## Drift
+
+`drift.py` — Dados de produção vs. treino: contrato de entrada (camada 0) e deriva das distribuições de estado e ação (camada 1). Construtor: `Drift(config, reference_path, output_dir="eval_results", run_dir=None, name=None)`, onde `reference_path` é o `.npz` gerado por `build_reference(dataset_lerobot_v21, reference.npz)` (ou pela CLI `build`). O detalhe por dimensão fica em `self.state_detail` / `self.action_detail` / `self.contract_issues` e em `<name>_drift_detail.json` no `output_dir`.
+
+Todos os métodos recebem o mesmo `episode` (dict, por exemplo o `.npz` salvo pelo cliente) e devem ser chamados uma vez por episódio.
+
+| Chave de `episode` | Descrição |
+|---|---|
+| `state` | Estados, shape `(T, dim_estado)`. |
+| `actions` | Ações previstas, shape `(..., dim_acao)`; os eixos iniciais são achatados. |
+| `prompt` | Instrução enviada ao modelo. |
+| `cam_high`, `cam_wrist`, `cam_low` | Imagens `(N, 3, 224, 224)` `uint8`, com letterbox. |
+
+### `contract`
+
+- **Para que serve:** Detectar entradas fora do contrato do treino antes de olhar as distribuições.
+- **O que faz:** Verifica a dimensão do estado, se o prompt está entre os do treino, formato e dtype das imagens, presença do letterbox (faixas de 28 linhas com média ≤ 5) e ordem RGB/BGR (média por canal comparada à do treino; heurística pouco confiável em cenas cinzas).
+- **Variáveis de entrada:** `episode` (`state`, `prompt` e as câmeras).
+- **Retorno:** dict com `contract_ok` (bool) e `contract_issues` (problemas separados por `"; "`, `""` se ok).
+
+### `state_drift`
+
+- **Para que serve:** Medir o quanto os estados em produção se afastam dos vistos no treino.
+- **O que faz:** Por dimensão, calcula a fração dos valores fora de [q01, q99] do treino e a distância de Wasserstein (média da diferença entre 101 quantis) dividida pelo desvio padrão do treino.
+- **Variáveis de entrada:** `episode["state"]`.
+- **Retorno:** dict com `state_wasserstein_std_max`, `state_wasserstein_std_mean`, `state_frac_outside_max` e `state_worst_dim` (dimensão com maior Wasserstein).
+
+### `action_drift`
+
+- **Para que serve:** Medir o quanto as ações previstas se afastam das ações do treino.
+- **O que faz:** Mesma conta de `state_drift`, aplicada a `episode["actions"]` achatado contra as ações do treino.
+- **Variáveis de entrada:** `episode["actions"]`.
+- **Retorno:** dict com `action_wasserstein_std_max`, `action_wasserstein_std_mean`, `action_frac_outside_max` e `action_worst_dim`.
+
+Referência no dataset `widowxai-organize-the-table-effort-v21`: o máximo por episódio de `wasserstein_std` nos 50 episódios de treino tem p50 = 0.65, p95 = 0.98 e máx = 1.49 (estado e ação). Valores acima disso num episódio de produção indicam drift maior que a variação entre episódios de treino.
+
+---
+
 ## FailureAnalysis
 
 `failure_analysis.py` — Análise de falhas. Classifica o episódio em tipos de falha: percepção, compreensão de linguagem, planejamento, preensão (grasp), controle, recuperação e hardware/calibração.
