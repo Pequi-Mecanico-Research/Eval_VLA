@@ -92,5 +92,5 @@ def test_cli_check(tmp_path):
     np.savez(tmp_path / "ep.npz", **make_episode(rng))
     out = subprocess.run([sys.executable, "-m", "eval_vla.metrics.drift", "check", str(ref), str(tmp_path / "ep.npz"),
                           "--out", str(tmp_path / "out")], capture_output=True, text=True, check=True).stdout
-    assert json.loads(out[: out.rindex("}") + 1])["contract"]["contract_ok"] is True
+    assert json.loads(out)["contract"]["contract_ok"] is True
     assert list((tmp_path / "out").glob("*/episodes.csv"))

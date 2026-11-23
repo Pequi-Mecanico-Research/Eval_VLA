@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -47,7 +48,8 @@ class Drift(EvalVLA):
     def __init__(self, config: SetupConfig, reference_path: str | Path, output_dir: str | Path = "eval_results",
                  run_dir: str | Path | None = None, name: str | None = None) -> None:
         super().__init__(config, output_dir, run_dir, name)
-        self.ref = dict(np.load(reference_path))
+        with np.load(reference_path) as data:
+            self.ref = dict(data)
         self.contract_issues: list[str] = []
         self.state_detail: dict[str, dict[str, float]] = {}
         self.action_detail: dict[str, dict[str, float]] = {}
@@ -167,11 +169,12 @@ def main() -> None:
         return
     config = SetupConfig({}, {}, {}, 0.0, {}, {}, "", "", "", "drift_check", "")
     drift = Drift(config, args.reference, args.out)
-    episode = dict(np.load(args.episode))
+    with np.load(args.episode) as data:
+        episode = dict(data)
     result = {m: getattr(drift, m)(episode) for m in ("contract", "state_drift", "action_drift")}
     drift.end_episode()
     print(json.dumps(result, indent=2))
-    print(f"results in {drift.output_dir}")
+    print(f"results in {drift.output_dir}", file=sys.stderr)
 
 
 if __name__ == "__main__":
