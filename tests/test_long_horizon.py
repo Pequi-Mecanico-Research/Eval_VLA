@@ -58,3 +58,4 @@ def test_csv_columns(lh):
     assert [r["failure_position"] for r in rows] == ["3", ""]
     assert rows[0]["subtask_completion_rate"] == "0.5"
     assert float(rows[1]["average_completed_sequence_length"]) == 2.5
+    assert (lh.output_dir / "long_horizon.png").exists()
