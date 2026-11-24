@@ -24,7 +24,8 @@ from eval_vla.vision.viewer import make_viewer
 
 
 def main(n_episodes: int = 5, steps_per_episode: int = 50, ip: str = "192.168.1.2", window_s: float = 30.0,
-         debug_video: bool = False, viewer: str = "rerun") -> None:
+         debug_video: bool = False, viewer: str = "rerun", judge: str = "ollama",
+         robometer_url: str = "http://localhost:8000") -> None:
     start_eval_time = time.perf_counter()
     task_name = "Organize_the_table"
 
@@ -48,7 +49,7 @@ def main(n_episodes: int = 5, steps_per_episode: int = 50, ip: str = "192.168.1.
 
     stats = Statistical(config, run_dir=run_dir, name="statistical")
     operation = Operation(config, episodes=n_episodes, run_dir=run_dir, name="operation")
-    long_horizon = LongHorizon(config, run_dir=run_dir, name="long_horizon")
+    long_horizon = LongHorizon(config, run_dir=run_dir, name="long_horizon", judge=judge, robometer_url=robometer_url)
 
     camera = Camera(0).open()
     view = make_viewer(viewer, camera)
@@ -88,10 +89,9 @@ def main(n_episodes: int = 5, steps_per_episode: int = 50, ip: str = "192.168.1.
         #operation.reset_failure_rate(driver)
         operation.human_intervention_rate(video_path, prompt=["hand", "human arm"], model="sam3")
 
-        subtasks_completed = [bool(stats.success_rate_value)] 
-        long_horizon.subtask_completion_rate(subtasks_completed)
-        long_horizon.average_completed_sequence_length(subtasks_completed)
-        long_horizon.failure_position_distribution(subtasks_completed)
+        long_horizon.subtask_completion_rate(video_path)
+        long_horizon.average_completed_sequence_length()
+        long_horizon.failure_position_distribution()
 
         stats.end_episode()
         operation.end_episode()
@@ -116,5 +116,7 @@ if __name__ == "__main__":
     parser.add_argument("--ip", default="192.168.1.2")
     parser.add_argument("--window_s", type=float, default=30.0, help="seconds at the end of a failed episode sent to the VLM")
     parser.add_argument("--debug_video", action="store_true", help="save the frames sent to the VLM")
+    parser.add_argument("--judge", choices=["ollama", "robometer"], default="ollama", help="who judges subtask completion from the video")
+    parser.add_argument("--robometer_url", default="http://localhost:8000", help="Robometer eval server, used with --judge robometer")
     parser.add_argument("--viewer", choices=["opencv", "rerun"], default=argparse.SUPPRESS)
     main(**vars(parser.parse_args()))

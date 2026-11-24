@@ -143,43 +143,45 @@ Estrutura usada para cada método:
 
 ## LongHorizon
 
-`long_horizon.py` — Tarefas de longo horizonte: taxa de conclusão de subtarefas, comprimento médio da sequência concluída e distribuição das posições de falha ao longo da sequência. **Os três métodos ainda não estão implementados.**
+`long_horizon.py` — Tarefas de longo horizonte: taxa de conclusão de subtarefas, comprimento médio da sequência concluída e posição/momento da falha ao longo da sequência.
+
+As subtarefas de cada tarefa ficam em `TASK_SUBTASKS` (chave = `config.task_name`) ou no argumento `subtasks` do `__init__`. Quem decide em que momento cada subtarefa foi concluída é o `judge`:
+
+| `judge` | Como julga |
+|---|---|
+| `"ollama"` (padrão) | VLM via Ollama (`vlm_model`, `vlm_host`) recebe `n_frames` frames do vídeo inteiro com seus tempos e responde o primeiro frame em que cada subtarefa foi concluída. |
+| `"robometer"` | Servidor do [Robometer](https://github.com/robometer/robometer) (`robometer_url`) dá a probabilidade de sucesso por frame para cada subtarefa; a subtarefa é concluída no primeiro frame com probabilidade ≥ `robometer_threshold`. Subir o servidor na máquina com GPU: `uv run python robometer/evals/eval_server.py --config_path=robometer/configs/config.yaml --host=0.0.0.0 --port=8000`. |
 
 ### `subtask_completion_rate`
 
-- **Para que serve:** Medir a fração das subtarefas individuais concluídas, independente de a sequência completa ter tido sucesso.
-- **O que faz:** Chamar uma vez por episódio. *(Não implementado ainda.)*
+- **Para que serve:** Medir a fração das subtarefas da tarefa concluídas, independente de a sequência completa ter tido sucesso.
+- **O que faz:** Envia o vídeo do episódio ao `judge` e guarda em que momento cada subtarefa foi concluída. Chamar uma vez por episódio, antes dos outros dois métodos, que reutilizam essa análise.
 - **Variáveis de entrada:**
 
   | Variável | Descrição |
   |---|---|
-  | `subtasks_completed` | Um bool por subtarefa, em ordem de execução; `True` se aquela subtarefa foi concluída. |
+  | `video_path` | Vídeo do episódio. |
 
-- **Retorno:** dict com a taxa de conclusão de subtarefas. *(Não implementado ainda.)*
+- **Retorno:** dict com `subtask_completion_rate` (acumulada nos episódios), `episode_subtask_completion_rate` (só este episódio), `t_<subtarefa>` (segundos desde o início do vídeo em que cada subtarefa foi concluída, `None` se não foi), `judge` e `judge_raw_reply`.
 
 ### `average_completed_sequence_length`
 
 - **Para que serve:** Medir o número médio de subtarefas consecutivas concluídas desde o início da sequência (no estilo CALVIN).
-- **O que faz:** Chamar uma vez por episódio. *(Não implementado ainda.)*
+- **O que faz:** Chamar uma vez por episódio, depois de `subtask_completion_rate`.
 - **Variáveis de entrada:**
 
   | Variável | Descrição |
   |---|---|
-  | `subtasks_completed` | Um bool por subtarefa, em ordem de execução; `True` se aquela subtarefa foi concluída. |
+  | `subtasks_completed` | Opcional. Um bool por subtarefa; padrão é o resultado do último `subtask_completion_rate`. |
 
-- **Retorno:** dict com o comprimento médio da sequência concluída. *(Não implementado ainda.)*
+- **Retorno:** dict com `average_completed_sequence_length`.
 
 ### `failure_position_distribution`
 
-- **Para que serve:** Mostrar em qual ponto da sequência as falhas se concentram.
-- **O que faz:** Histograma do índice da subtarefa (começando em 1) em que cada tentativa falhou pela primeira vez. Chamar uma vez por episódio. *(Não implementado ainda.)*
-- **Variáveis de entrada:**
-
-  | Variável | Descrição |
-  |---|---|
-  | `subtasks_completed` | Um bool por subtarefa, em ordem de execução; `True` se aquela subtarefa foi concluída. |
-
-- **Retorno:** dict com a distribuição das posições de falha. *(Não implementado ainda.)*
+- **Para que serve:** Mostrar em qual subtarefa e em que momento (tempo, step) do episódio as falhas acontecem.
+- **O que faz:** Usa a análise do último `subtask_completion_rate`. A falha é a primeira subtarefa não concluída; o momento da falha é quando a subtarefa anterior foi concluída (0 s se a primeira falhou), e o step é esse tempo × `config.control_frequency`. Os histogramas (posição por nome da subtarefa e tempo da falha) são gerados em `_save_graphs`. Chamar uma vez por episódio.
+- **Variáveis de entrada:** Nenhuma.
+- **Retorno:** dict com `failure_position` (índice começando em 1), `failure_subtask`, `failure_time_s` e `failure_step`; todos `None` se todas as subtarefas foram concluídas.
 
 ---
 
