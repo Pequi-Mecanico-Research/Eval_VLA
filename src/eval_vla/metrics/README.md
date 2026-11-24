@@ -1,207 +1,207 @@
-# Métricas
+# Metrics
 
-Cada classe de métricas herda de `EvalVLA` e cada método decorado com `@metric` é uma métrica.
+Each metric class inherits from `EvalVLA`, and each method decorated with `@metric` is a metric.
 
-Estrutura usada para cada método:
+Structure used for each method:
 
-- **Para que serve:**
-- **O que faz:**
-- **Variáveis de entrada:**
-- **Retorno:**
+- **Purpose:**
+- **What it does:**
+- **Inputs:**
+- **Returns:**
 
 ---
 
 ## Statistical
 
-`statistical.py` — Relatório estatístico: taxa de sucesso, tempo de conclusão da tarefa (média e desvio padrão, em segundos) e latência de inferência no hardware em uso (média e p95).
+`statistical.py`: statistical report covering success rate, task completion time (mean and standard deviation, in seconds) and inference latency on the hardware in use (mean and p95).
 
 ### `success_rate`
 
-- **Para que serve:** Verificar se a política moveu os objetos da mesa para o recipiente.
-- **O que faz:** Conta os objetos nas ROIs antes e depois da ação da política e compara. Possui dois modos (`task_mode`):
-  - `"model_segmentation"`: conta os objetos de `prompt` dentro das ROIs usando `model`, em `before_frame` e `after_frame`. Precisa de `prompt` e `rois`.
-  - `"image_diff"`: conta os objetos comparando cada frame com `reference_frame` (mesa vazia). Precisa de `reference_frame` e `rois`.
-- **Variáveis de entrada:**
+- **Purpose:** Check whether the policy moved the objects from the table into the container.
+- **What it does:** Counts the objects in the ROIs before and after the policy acts and compares them. It has two modes (`task_mode`):
+  - `"model_segmentation"`: counts the `prompt` objects inside the ROIs using `model`, in `before_frame` and `after_frame`. Requires `prompt` and `rois`.
+  - `"image_diff"`: counts the objects by comparing each frame with `reference_frame` (empty table). Requires `reference_frame` and `rois`.
+- **Inputs:**
 
-  | Variável | Descrição |
+  | Variable | Description |
   |---|---|
-  | `task_name` | Tarefa avaliada (atualmente apenas `"Organize_the_table"`). |
-  | `task_mode` | `"model_segmentation"` ou `"image_diff"`. |
-  | `before_frame` | Imagem da mesa logo antes de a política agir. |
-  | `after_frame` | Imagem da mesa logo depois de a política agir. |
-  | `prompt` | Nomes/descrições dos objetos a segmentar. |
-  | `reference_frame` | Imagem da mesa vazia, usada como base no modo `"image_diff"`. |
-  | `rois` | Regiões de interesse onde os objetos começam (mesa) e terminam (recipiente). |
-  | `model` | Modelo de segmentação usado no modo `"model_segmentation"`. |
-  | `debug_plots` | Salva as imagens de debug do modo `"image_diff"`. |
-  | `weights` | Caminho do arquivo de pesos (ex.: `sam3.pt`) de `model`, usado em `"model_segmentation"`. Se `None`, procura em `model_weights/<model>.pt` dentro do pacote, que não vem no `pip install`; baixe em https://huggingface.co/facebook/sam3 (ver README da raiz). Só é lido na primeira vez que o detector é criado. |
+  | `task_name` | Task being evaluated (currently only `"Organize_the_table"`). |
+  | `task_mode` | `"model_segmentation"` or `"image_diff"`. |
+  | `before_frame` | Image of the table right before the policy acts. |
+  | `after_frame` | Image of the table right after the policy acts. |
+  | `prompt` | Names/descriptions of the objects to segment. |
+  | `reference_frame` | Image of the empty table, used as the baseline in `"image_diff"` mode. |
+  | `rois` | Regions of interest where the objects start (table) and end up (container). |
+  | `model` | Segmentation model used in `"model_segmentation"` mode. |
+  | `debug_plots` | Saves the debug images of `"image_diff"` mode. |
+  | `weights` | Path to the weights file (e.g. `sam3.pt`) of `model`, used in `"model_segmentation"`. If `None`, looks for `model_weights/<model>.pt` inside the package, which is not shipped with `pip install`; download it from https://huggingface.co/facebook/sam3 (see the root README). Only read the first time the detector is created. |
 
-- **Retorno:** dict com `successes` (bool), `objects_on_table_before` e `objects_in_container_after` (int, ou `None` para tarefas desconhecidas).
+- **Returns:** dict with `successes` (bool), `objects_on_table_before` and `objects_in_container_after` (int, or `None` for unknown tasks).
 
 ### `task_completion_time`
 
-- **Para que serve:** Medir quanto tempo a política levou para concluir o episódio.
-- **O que faz:** Acumula as durações dos episódios e calcula média, mediana e desvio padrão. Chamar uma vez por episódio, depois que a política para de agir.
-- **Variáveis de entrada:**
+- **Purpose:** Measure how long the policy took to complete the episode.
+- **What it does:** Accumulates episode durations and computes mean, median and standard deviation. Call once per episode, after the policy stops acting.
+- **Inputs:**
 
-  | Variável | Descrição |
+  | Variable | Description |
   |---|---|
-  | `start_time` | Início do episódio, de `time.perf_counter()`, em segundos. |
-  | `end_time` | Fim do episódio, de `time.perf_counter()`, em segundos. |
-  | `precision` | Casas decimais usadas para arredondar os valores retornados. |
+  | `start_time` | Episode start, from `time.perf_counter()`, in seconds. |
+  | `end_time` | Episode end, from `time.perf_counter()`, in seconds. |
+  | `precision` | Decimal places used to round the returned values. |
 
-- **Retorno:** dict com `task_completion_sec_list` (duração deste episódio) e `task_completion_sec_mean`, `_median` e `_std` sobre todos os episódios até agora, em segundos.
+- **Returns:** dict with `task_completion_sec_list` (this episode's duration) and `task_completion_sec_mean`, `_median` and `_std` over all episodes so far, in seconds.
 
 ### `inference_latency`
 
-- **Para que serve:** Medir o tempo de inferência da política em cada passo.
-- **O que faz:** Acumula as latências ao longo do episódio e calcula média, mediana, desvio padrão e p95. Chamar uma vez por passo, envolvendo apenas a chamada da política.
-- **Variáveis de entrada:**
+- **Purpose:** Measure the policy's inference time at each step.
+- **What it does:** Accumulates latencies over the episode and computes mean, median, standard deviation and p95. Call once per step, wrapping only the policy call.
+- **Inputs:**
 
-  | Variável | Descrição |
+  | Variable | Description |
   |---|---|
-  | `inference_time_start` | Tempo logo antes da chamada da política, de `time.perf_counter()`, em segundos. |
-  | `inference_time_end` | Tempo logo depois da chamada da política, de `time.perf_counter()`, em segundos. |
-  | `steps_per_episode` | Número de passos da política em um episódio, usado para reiniciar as latências acumuladas no próximo episódio. |
-  | `precision` | Casas decimais usadas para arredondar os valores retornados. |
+  | `inference_time_start` | Time right before the policy call, from `time.perf_counter()`, in seconds. |
+  | `inference_time_end` | Time right after the policy call, from `time.perf_counter()`, in seconds. |
+  | `steps_per_episode` | Number of policy steps in an episode, used to reset the accumulated latencies on the next episode. |
+  | `precision` | Decimal places used to round the returned values. |
 
-- **Retorno:** dict com `inference_latency_sec_list` (latência deste passo) e `inference_latency_sec_mean`, `_median`, `_std` e `_p95` das latências acumuladas, em segundos.
+- **Returns:** dict with `inference_latency_sec_list` (this step's latency) and `inference_latency_sec_mean`, `_median`, `_std` and `_p95` of the accumulated latencies, in seconds.
 
 ---
 
 ## Operation
 
-`operation.py` — Métricas operacionais: taxa de intervenção humana, taxa de colisão, taxa de jerks (movimentos bruscos) e taxa de falha de reset.
+`operation.py`: operational metrics covering human intervention rate, collision rate, jerk rate (abrupt movements) and reset failure rate.
 
 ### `human_intervention_rate`
 
-- **Para que serve:** Detectar se um humano entrou na cena durante o episódio, ou seja, precisou intervir manualmente.
-- **O que faz:** Segmenta o vídeo do episódio procurando o que está em `prompt` e retorna os intervalos de tempo com presença humana. Chamar uma vez por episódio, sobre o vídeo gravado.
-- **Variáveis de entrada:**
+- **Purpose:** Detect whether a human entered the scene during the episode, i.e. had to intervene manually.
+- **What it does:** Segments the episode video looking for what is in `prompt` and returns the time intervals with a human present. Call once per episode, on the recorded video.
+- **Inputs:**
 
-  | Variável | Descrição |
+  | Variable | Description |
   |---|---|
-  | `video_path` | Vídeo do episódio. |
-  | `model` | Modelo de segmentação usado para encontrar o humano no vídeo. |
-  | `prompt` | Descrições do que conta como intervenção humana (ex.: `"hand"`, `"human arm"`). |
-  | `precision` | Casas decimais usadas para arredondar os valores retornados. |
-  | `weights` | Caminho do arquivo de pesos (ex.: `sam3.pt`) de `model`. Se `None`, procura em `model_weights/<model>.pt` dentro do pacote, que não vem no `pip install`; baixe em https://huggingface.co/facebook/sam3 (ver README da raiz). Só é lido na primeira vez que o detector é criado. |
-  | `**detection_kwargs` | Argumentos extras repassados para `ObjectDetection.run`. |
+  | `video_path` | Episode video. |
+  | `model` | Segmentation model used to find the human in the video. |
+  | `prompt` | Descriptions of what counts as human intervention (e.g. `"hand"`, `"human arm"`). |
+  | `precision` | Decimal places used to round the returned values. |
+  | `weights` | Path to the weights file (e.g. `sam3.pt`) of `model`. If `None`, looks for `model_weights/<model>.pt` inside the package, which is not shipped with `pip install`; download it from https://huggingface.co/facebook/sam3 (see the root README). Only read the first time the detector is created. |
+  | `**detection_kwargs` | Extra arguments forwarded to `ObjectDetection.run`. |
 
-- **Retorno:** dict com `human_interventions` (número de intervalos com humano), `human_intervention_sec` (tempo total com humano), `human_intervention_intervals` (lista de (início, fim) em segundos) e `human_intervention_rate` (fração dos `episodes` com ao menos uma intervenção até agora).
+- **Returns:** dict with `human_interventions` (number of intervals with a human), `human_intervention_sec` (total time with a human), `human_intervention_intervals` (list of (start, end) in seconds) and `human_intervention_rate` (fraction of `episodes` with at least one intervention so far).
 
 ### `collision_rate`
 
-- **Para que serve:** Detectar contato não intencional (colisão) durante o episódio a partir dos torques das juntas do braço.
-- **O que faz:** Chamar a cada passo de controle. Guarda o pico do sinal por junta ao longo do episódio e marca colisão quando algum pico passa do limite. Modos (`mode`):
-  - `"gmo"`: observador de momento generalizado. O resíduo estima o torque externo usando o modelo dinâmico do braço (URDF) e as posições, velocidades e esforços medidos.
-  - `"driver"`: usa os esforços externos já informados pelo driver do braço.
-- **Variáveis de entrada:**
+- **Purpose:** Detect unintended contact (collision) during the episode from the arm's joint torques.
+- **What it does:** Call at every control step. Keeps the per-joint signal peak over the episode and flags a collision when any peak exceeds its threshold. Modes (`mode`):
+  - `"gmo"`: generalized momentum observer. The residual estimates the external torque using the arm's dynamic model (URDF) and the measured positions, velocities and efforts.
+  - `"driver"`: uses the external efforts already reported by the arm driver.
+- **Inputs:**
 
-  | Variável | Descrição |
+  | Variable | Description |
   |---|---|
-  | `driver` | Driver do braço Trossen conectado, lido a cada chamada. |
-  | `mode` | `"gmo"` ou `"driver"`. |
-  | `thresholds` | Valor absoluto máximo aceito por junta do braço, em Nm. |
-  | `gain` | Ganho K_O do observador no modo `"gmo"`, em 1/s. Valores maiores reagem mais rápido, mas adicionam ruído. |
-  | `precision` | Casas decimais usadas para arredondar os valores retornados. |
+  | `driver` | Connected Trossen arm driver, read on every call. |
+  | `mode` | `"gmo"` or `"driver"`. |
+  | `thresholds` | Maximum accepted absolute value per arm joint, in Nm. |
+  | `gain` | Observer gain K_O in `"gmo"` mode, in 1/s. Higher values react faster but add noise. |
+  | `precision` | Decimal places used to round the returned values. |
 
-- **Retorno:** dict com `collision_mode`, `collision_detected` (neste episódio), `collision_rate` (fração dos `episodes` com colisão até agora), `collision_thresholds` e `collision_values` (pico por junta). Levanta `ValueError` se `mode` não for `"gmo"` nem `"driver"`.
+- **Returns:** dict with `collision_mode`, `collision_detected` (in this episode), `collision_rate` (fraction of `episodes` with a collision so far), `collision_thresholds` and `collision_values` (peak per joint). Raises `ValueError` if `mode` is neither `"gmo"` nor `"driver"`.
 
 ### `jerks_rate`
 
-- **Para que serve:** Detectar movimento brusco (mudança abrupta de aceleração) durante o episódio.
-- **O que faz:** Chamar a cada passo de controle. O jerk é a derivada das acelerações ao longo do episódio; guarda o pico por junta e do efetuador final, e marca o episódio quando algum pico passa do limite.
-- **Variáveis de entrada:**
+- **Purpose:** Detect abrupt motion (sudden change in acceleration) during the episode.
+- **What it does:** Call at every control step. Jerk is the derivative of the accelerations over the episode; it keeps the peak per joint and for the end effector, and flags the episode when any peak exceeds its threshold.
+- **Inputs:**
 
-  | Variável | Descrição |
+  | Variable | Description |
   |---|---|
-  | `driver` | Driver do braço Trossen conectado, lido a cada chamada. |
-  | `joint_jerk_thresholds` | Jerk máximo aceito por junta, em rad/s³ (m/s³ para a garra). |
-  | `linear_jerk_threshold` | Jerk linear máximo aceito do efetuador final, em m/s³. |
-  | `angular_jerk_threshold` | Jerk angular máximo aceito do efetuador final, em rad/s³. |
-  | `precision` | Casas decimais usadas para arredondar os valores retornados. |
+  | `driver` | Connected Trossen arm driver, read on every call. |
+  | `joint_jerk_thresholds` | Maximum accepted jerk per joint, in rad/s³ (m/s³ for the gripper). |
+  | `linear_jerk_threshold` | Maximum accepted linear jerk of the end effector, in m/s³. |
+  | `angular_jerk_threshold` | Maximum accepted angular jerk of the end effector, in rad/s³. |
+  | `precision` | Decimal places used to round the returned values. |
 
-- **Retorno:** dict com `jerks_detected` (neste episódio), `jerks_rate` (fração dos episódios com jerks até agora), `jerks_thresholds` e `jerks_values` (picos por junta, depois linear e angular).
+- **Returns:** dict with `jerks_detected` (in this episode), `jerks_rate` (fraction of episodes with jerks so far), `jerks_thresholds` and `jerks_values` (peaks per joint, then linear and angular).
 
 ### `reset_failure_rate`
 
-- **Para que serve:** Verificar se o braço voltou à pose de reset (sleep), ou seja, se o procedimento de reset funcionou.
-- **O que faz:** Compara as posições atuais das juntas com a pose de reset e marca falha se algum erro passar da tolerância. Chamar uma vez por episódio, quando o braço deveria estar na pose de reset.
-- **Variáveis de entrada:**
+- **Purpose:** Check whether the arm returned to the reset (sleep) pose, i.e. whether the reset procedure worked.
+- **What it does:** Compares the current joint positions with the reset pose and flags a failure if any error exceeds the tolerance. Call once per episode, when the arm should be in the reset pose.
+- **Inputs:**
 
-  | Variável | Descrição |
+  | Variable | Description |
   |---|---|
-  | `driver` | Driver do braço Trossen conectado, lido na chamada. |
-  | `sleep_positions` | Posições esperadas das juntas na pose de reset, nas unidades do driver. |
-  | `tolerance` | Erro absoluto máximo aceito por junta; acima dele o reset conta como falho. |
-  | `precision` | Casas decimais usadas para arredondar os valores retornados. |
+  | `driver` | Connected Trossen arm driver, read on the call. |
+  | `sleep_positions` | Expected joint positions in the reset pose, in driver units. |
+  | `tolerance` | Maximum accepted absolute error per joint; above it the reset counts as failed. |
+  | `precision` | Decimal places used to round the returned values. |
 
-- **Retorno:** dict com `reset_failed` (neste episódio), `reset_max_joint_error`, `reset_joint_errors` (por junta) e `reset_failure_rate` (fração dos episódios com reset falho até agora).
+- **Returns:** dict with `reset_failed` (in this episode), `reset_max_joint_error`, `reset_joint_errors` (per joint) and `reset_failure_rate` (fraction of episodes with a failed reset so far).
 
 ---
 
 ## LongHorizon
 
-`long_horizon.py` — Tarefas de longo horizonte: taxa de conclusão de subtarefas, comprimento médio da sequência concluída e distribuição das posições de falha ao longo da sequência. **Os três métodos ainda não estão implementados.**
+`long_horizon.py`: long-horizon tasks, covering subtask completion rate, average completed sequence length and the distribution of failure positions along the sequence. **None of the three methods is implemented yet.**
 
 ### `subtask_completion_rate`
 
-- **Para que serve:** Medir a fração das subtarefas individuais concluídas, independente de a sequência completa ter tido sucesso.
-- **O que faz:** Chamar uma vez por episódio. *(Não implementado ainda.)*
-- **Variáveis de entrada:**
+- **Purpose:** Measure the fraction of individual subtasks completed, regardless of whether the full sequence succeeded.
+- **What it does:** Call once per episode. *(Not implemented yet.)*
+- **Inputs:**
 
-  | Variável | Descrição |
+  | Variable | Description |
   |---|---|
-  | `subtasks_completed` | Um bool por subtarefa, em ordem de execução; `True` se aquela subtarefa foi concluída. |
+  | `subtasks_completed` | One bool per subtask, in execution order; `True` if that subtask was completed. |
 
-- **Retorno:** dict com a taxa de conclusão de subtarefas. *(Não implementado ainda.)*
+- **Returns:** dict with the subtask completion rate. *(Not implemented yet.)*
 
 ### `average_completed_sequence_length`
 
-- **Para que serve:** Medir o número médio de subtarefas consecutivas concluídas desde o início da sequência (no estilo CALVIN).
-- **O que faz:** Chamar uma vez por episódio. *(Não implementado ainda.)*
-- **Variáveis de entrada:**
+- **Purpose:** Measure the average number of consecutive subtasks completed from the start of the sequence (CALVIN-style).
+- **What it does:** Call once per episode. *(Not implemented yet.)*
+- **Inputs:**
 
-  | Variável | Descrição |
+  | Variable | Description |
   |---|---|
-  | `subtasks_completed` | Um bool por subtarefa, em ordem de execução; `True` se aquela subtarefa foi concluída. |
+  | `subtasks_completed` | One bool per subtask, in execution order; `True` if that subtask was completed. |
 
-- **Retorno:** dict com o comprimento médio da sequência concluída. *(Não implementado ainda.)*
+- **Returns:** dict with the average completed sequence length. *(Not implemented yet.)*
 
 ### `failure_position_distribution`
 
-- **Para que serve:** Mostrar em qual ponto da sequência as falhas se concentram.
-- **O que faz:** Histograma do índice da subtarefa (começando em 1) em que cada tentativa falhou pela primeira vez. Chamar uma vez por episódio. *(Não implementado ainda.)*
-- **Variáveis de entrada:**
+- **Purpose:** Show where in the sequence failures concentrate.
+- **What it does:** Histogram of the subtask index (1-based) at which each trial first failed. Call once per episode. *(Not implemented yet.)*
+- **Inputs:**
 
-  | Variável | Descrição |
+  | Variable | Description |
   |---|---|
-  | `subtasks_completed` | Um bool por subtarefa, em ordem de execução; `True` se aquela subtarefa foi concluída. |
+  | `subtasks_completed` | One bool per subtask, in execution order; `True` if that subtask was completed. |
 
-- **Retorno:** dict com a distribuição das posições de falha. *(Não implementado ainda.)*
+- **Returns:** dict with the distribution of failure positions. *(Not implemented yet.)*
 
 ---
 
 ## FailureAnalysis
 
-`failure_analysis.py` — Análise de falhas. Classifica o episódio em tipos de falha: percepção, compreensão de linguagem, planejamento, preensão (grasp), controle, recuperação e hardware/calibração.
+`failure_analysis.py`: failure analysis. Classifies the episode into failure types: perception, language understanding, planning, grasping, control, recovery and hardware/calibration.
 
 ### `vlm_failure_type`
 
-- **Para que serve:** Descobrir, com um modelo visão-linguagem (VLM, via Ollama), qual tipo de falha o vídeo do episódio mostra.
-- **O que faz:** Amostra `vlm_frames` frames dos últimos `window_s` segundos do vídeo e os envia ao VLM junto com o nome da tarefa e o critério de sucesso do config. Roda automaticamente quando `FailureAnalysis` é criada.
-- **Variáveis de entrada:** O método não recebe argumentos; as entradas são definidas no `__init__`.
+- **Purpose:** Find out, using a vision-language model (VLM, via Ollama), which failure type the episode video shows.
+- **What it does:** Samples `vlm_frames` frames from the last `window_s` seconds of the video and sends them to the VLM together with the task name and the success criterion from the config. Runs automatically when `FailureAnalysis` is created.
+- **Inputs:** The method takes no arguments; the inputs are set in `__init__`.
 
-  | Variável (`__init__`) | Descrição |
+  | Variable (`__init__`) | Description |
   |---|---|
-  | `video_path` | Vídeo do episódio analisado. |
-  | `window_s` | Janela final do vídeo (em segundos) usada na análise. |
-  | `vlm_model` | Modelo do Ollama usado (padrão `qwen3.5:latest`). |
-  | `vlm_host` | Endereço do servidor Ollama. |
-  | `vlm_frames` | Número de frames amostrados para o VLM. |
-  | `debug_video` | Salva um vídeo com os frames enviados ao VLM. |
-  | `vlm_timeout_s` | Tempo limite da requisição ao VLM, em segundos. |
-  | `vlm_num_ctx` | Tamanho do contexto (`num_ctx`) do VLM. |
+  | `video_path` | Episode video being analyzed. |
+  | `window_s` | Final window of the video (in seconds) used in the analysis. |
+  | `vlm_model` | Ollama model used (default `qwen3.5:latest`). |
+  | `vlm_host` | Ollama server address. |
+  | `vlm_frames` | Number of frames sampled for the VLM. |
+  | `debug_video` | Saves a video with the frames sent to the VLM. |
+  | `vlm_timeout_s` | VLM request timeout, in seconds. |
+  | `vlm_num_ctx` | VLM context size (`num_ctx`). |
 
-- **Retorno:** dict com `vlm_failure_type` (nome de um `FailureType`, ou `None` se a resposta não foi reconhecida), `vlm_model` e `vlm_raw_reply` (resposta do modelo em texto).
+- **Returns:** dict with `vlm_failure_type` (name of a `FailureType`, or `None` if the reply was not recognized), `vlm_model` and `vlm_raw_reply` (the model's text reply).
