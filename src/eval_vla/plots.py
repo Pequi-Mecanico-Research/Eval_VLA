@@ -253,9 +253,9 @@ def plot_long_horizon(csv_path: str | Path, out_dir: str | Path, title: str = ""
     data = _read_csv(csv_path)
 
     with matplotlib.rc_context(STYLE):
-        fig = Figure(figsize=(15, 4.2), layout="constrained")
+        fig = Figure(figsize=(20, 4.2), layout="constrained")
         fig.suptitle(title)
-        ax_rate, ax_length, ax_position = fig.subplots(1, 3)
+        ax_rate, ax_length, ax_position, ax_time = fig.subplots(1, 4)
         episodes = np.array(data.get("episode", []))
 
         for ax, column, label, name in ((ax_rate, "subtask_completion_rate", "fraction of subtasks", "Subtask completion rate"),
@@ -267,12 +267,26 @@ def plot_long_horizon(csv_path: str | Path, out_dir: str | Path, title: str = ""
             else:
                 _empty(ax, name)
 
-        positions = [p for p in data.get("failure_position", []) if p]
+        positions = [(p, s) for p, s in zip(data.get("failure_position", []),
+                                            data.get("failure_subtask", [None] * len(data.get("failure_position", [])))) if p]
         if positions:
-            ax_position.hist(positions, bins=np.arange(1, max(positions) + 2) - 0.5, rwidth=0.8, color=COLORS["red"])
+            names = dict(sorted(positions))
+            labels = [f"{p}. {names[p]}" if names[p] else str(p) for p in names]
+            counts = [sum(p == q for q, _ in positions) for p in names]
+            bars = ax_position.barh(labels, counts, color=COLORS["red"])
+            ax_position.bar_label(bars, padding=3)
+            ax_position.invert_yaxis()
             ax_position.xaxis.set_major_locator(MaxNLocator(integer=True))
-            ax_position.set(xlabel="subtask index", ylabel="episodes", title="Failure positions")
+            ax_position.set(xlabel="episodes", title="Failure positions (first failed subtask)")
         else:
             _empty(ax_position, "Failure positions")
+
+        times = [t for t in data.get("failure_time_s", []) if t not in (None, "")]
+        if times:
+            ax_time.hist(_floats(times), bins="auto", color=COLORS["red"])
+            ax_time.yaxis.set_major_locator(MaxNLocator(integer=True))
+            ax_time.set(xlabel="seconds from episode start", ylabel="episodes", title="Failure time")
+        else:
+            _empty(ax_time, "Failure time")
 
         return _save(fig, out_dir, "long_horizon")

@@ -138,10 +138,9 @@ for ep in range(n_episodes):
     operation.reset_failure_rate(driver)
     operation.human_intervention_rate(video_path, prompt=["hand", "human arm"], model="sam3", weights=SAM3_WEIGHTS)  # detecta mão/braço no vídeo
 
-    subtasks_completed = [bool(stats.success_rate_value)]  # aqui a tarefa tem uma única subtarefa
-    long_horizon.subtask_completion_rate(subtasks_completed)
-    long_horizon.average_completed_sequence_length(subtasks_completed)
-    long_horizon.failure_position_distribution(subtasks_completed)
+    long_horizon.subtask_completion_rate(video_path)  # subtarefas de TASK_SUBTASKS[task_name], julgadas no vídeo
+    long_horizon.average_completed_sequence_length()
+    long_horizon.failure_position_distribution()
 ```
 
 ### 3 - Finalizar a execução com log das métricas por episódio e gráficos
