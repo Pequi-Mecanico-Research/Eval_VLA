@@ -4,11 +4,38 @@
 [![GitHub stars](https://img.shields.io/github/stars/Pequi-Mecanico-Research/Eval_VLA)](https://github.com/Pequi-Mecanico-Research/Eval_VLA/stargazers)
 [![GitHub issues](https://img.shields.io/github/issues/Pequi-Mecanico-Research/Eval_VLA)](https://github.com/Pequi-Mecanico-Research/Eval_VLA/issues)
 
-Reproducible metrics for evaluating Vision-Language-Action (VLA) models.
+Reproducible metrics for evaluating Vision-Language-Action (VLA) models on real robots. You call the metrics inside your policy's evaluation loop; each episode is logged to JSON/CSV and the plots are refreshed automatically.
+
+## Contents
+
+- [Metric families](#metric-families)
+- [Installation](#installation)
+- [Quickstart](#quickstart)
+- [Results and plots](#results-and-plots)
+- [Examples](#examples)
+- [Full evaluation on a real robot](#full-evaluation-on-a-real-robot)
+- [Adding a new metric class](#adding-a-new-metric-class)
+
+## Metric families
+
+Each family is a class in `src/eval_vla/metrics/`. Every method, its inputs and its outputs are described in [`src/eval_vla/metrics/README.md`](src/eval_vla/metrics/README.md).
+
+| Family | What it measures | Needs |
+|---|---|---|
+| `Statistical` | Success rate, task completion time (mean, std), inference latency (mean, p95) | Before/after camera frames for success (SAM3 or image difference) |
+| `Operation` | Human intervention, collision, jerk and reset failure rates | Arm driver (`trossen_arm`); episode video + SAM3 for human intervention |
+| `LongHorizon` | Subtask completion rate, average completed sequence length, failure position | Not implemented yet |
+| `FailureAnalysis` | Failure type of a failed episode (perception, grasping, planning, ...) | Episode video + a VLM served by [Ollama](https://ollama.com) |
 
 ## Installation
 
-**Recommended:** use uv as the package manager. If you don't have it installed, follow the steps at https://docs.astral.sh/uv/getting-started/installation/
+**As a package**, inside the environment of the repository that runs your VLA policy:
+
+```bash
+uv pip install eval_vla
+```
+
+**From source**, to develop or run the examples ([uv](https://docs.astral.sh/uv/getting-started/installation/) recommended):
 
 ```bash
 git clone https://github.com/Pequi-Mecanico-Research/Eval_VLA.git
@@ -18,19 +45,9 @@ source .venv/bin/activate
 uv sync
 ```
 
-## Usage as a pip package
+### SAM3 weights
 
-From a repository that implements a VLA policy, just install the package into its environment:
-
-```bash
-uv pip install eval_vla
-```
-
-Then call the metrics inside your policy's evaluation loop, as shown in [Usage as a local repository](#usage-as-a-local-repository) and in the files under `examples/`.
-
-### Model weights (SAM3)
-
-The pip package **does not include the SAM3 weights**. They are required by the `success_rate` (`"model_segmentation"` mode) and `human_intervention_rate` metrics.
+The package **does not include the SAM3 weights**. They are only needed by `success_rate` (`"model_segmentation"` mode) and `human_intervention_rate`.
 
 1. Download `sam3.pt` from Meta's Hugging Face repository: https://huggingface.co/facebook/sam3 (access is gated: you must request access on the model page and be logged in).
 2. Pass the file path to the metrics' `weights` parameter:
@@ -42,15 +59,78 @@ operation.human_intervention_rate(video_path, model="sam3", weights="weights/sam
 
 If `weights` is not given, the package looks for `model_weights/<model>.pt` inside the package itself, which only exists when running from the repository with the weights placed there.
 
-## Usage as a local repository
+## Quickstart
 
-Example of how to evaluate a VLA policy implemented in another repository:
+The smallest evaluation: describe the setup once, create a metric family, call its methods during each episode and close the episode with `end_episode()`.
 
-1. Configure the setup used by the metric classes.
-2. Instantiate the metric classes and call their methods during each episode.
-3. Finish the run with per-episode metric logs and plots.
+```python
+import time
 
-### 1. Configure the setup
+from eval_vla.config import SetupConfig
+from eval_vla.metrics.statistical import Statistical
+
+config = SetupConfig(  # saved next to every result, so runs stay comparable
+    robot_embodiment={"manufacturer": "Trossen", "model": "WidowX", "dof": 6},
+    camera_configuration={"count": 1, "positions": ["front"], "resolution": [640, 480]},
+    action_space={"type": "end_effector_pose", "dim": 7},
+    control_frequency=10.0,
+    object_set={"count": 1, "materials": ["plastic"], "seen_in_training": True},
+    scene_layout={"lighting": "indoor"},
+    reset_procedure="manual",
+    success_criteria="cube inside the tote",
+    model_name="openpi-finetune",
+    experiment_name="quickstart",
+    task_name="Organize_the_table",
+)
+
+stats = Statistical(config)  # creates eval_results/quickstart_<date>/
+
+for episode in range(3):
+    start = time.perf_counter()
+    for step in range(50):
+        t0 = time.perf_counter()
+        action = my_policy(observation)  # your policy call
+        stats.inference_latency(t0, time.perf_counter(), steps_per_episode=50)
+    stats.task_completion_time(start, time.perf_counter())
+    stats.end_episode()  # writes results.json, appends to episodes.csv, refreshes the plots
+```
+
+## Results and plots
+
+Every metric family writes to its own folder (or to a shared `run_dir`, see below):
+
+| File | Content |
+|---|---|
+| `results.json` | Setup config, number of episodes and the latest value of every metric. Overwritten on each `end_episode()`. |
+| `episodes.csv` | One row per episode with every metric value. |
+| `*.png` | Plots generated from the CSV, refreshed on each `end_episode()`. |
+
+To keep several families in one folder, pass the same `run_dir` and a different `name` to each one. Files are then prefixed: `<name>_results.json`, `<name>_episodes.csv`.
+
+```python
+stats = Statistical(config, run_dir=run_dir, name="statistical")
+operation = Operation(config, episodes=n_episodes, run_dir=run_dir, name="operation")
+```
+
+## Examples
+
+The `examples/` folder has runnable scripts (run them from the repository root):
+
+| Script | What it does |
+|---|---|
+| `full_eval.py` | Every metric family on the same episodes, with camera, arm and live viewer: `uv run -m examples.full_eval --n_episodes 3 --steps_per_episode 50 --ip 192.168.1.2` |
+| `statistical_eval_image_diff.py` | `Statistical` with success detected by image difference |
+| `statistical_eval_detect_model.py` | `Statistical` with success detected by a segmentation model |
+| `operation_eval.py` | `Operation` metrics on the WidowX arm |
+| `failure_analysis_eval.py` | Failure type of a recorded episode: `python examples/failure_analysis_eval.py <episode.mp4> --window 30` |
+| `widowx_driver_probe.py` | Read-only probe of what the WidowX driver exposes |
+
+## Full evaluation on a real robot
+
+This is the loop from `examples/full_eval.py`, with every family running on the same episodes. It has three parts: configure the setup, call the metrics during each episode, and close each episode.
+
+<details>
+<summary><b>1. Configure the setup</b></summary>
 
 ```python
 from __future__ import annotations
@@ -92,7 +172,10 @@ config = SetupConfig(  # environment/robot parameters, saved alongside every res
 run_dir = Path("eval_results") / f"{config.experiment_name}_{datetime.now():%d-%m_%H:%M:%S}"
 ```
 
-### 2. Instantiate the metrics and evaluate during each episode
+</details>
+
+<details>
+<summary><b>2. Instantiate the metrics and evaluate during each episode</b></summary>
 
 ```python
 n_episodes, steps_per_episode = 5, 50  # number of episodes and policy steps per episode
@@ -148,7 +231,10 @@ for ep in range(n_episodes):
     long_horizon.failure_position_distribution(subtasks_completed)
 ```
 
-### 3. Finish the run with per-episode logs and plots
+</details>
+
+<details>
+<summary><b>3. Close each episode and save logs and plots</b></summary>
 
 ```python
     # still inside the episode loop
@@ -167,7 +253,9 @@ view.close()
 camera.close()
 ```
 
-At the end, the `run_dir` folder contains, for each family, `<name>_results.json`, `<name>_episodes.csv` and the plots generated from the CSV.
+</details>
+
+At the end, `run_dir` contains, for each family, `<name>_results.json`, `<name>_episodes.csv` and its plots.
 
 ## Adding a new metric class
 
@@ -203,5 +291,3 @@ At the end, the `run_dir` folder contains, for each family, `<name>_results.json
    ```
 
 Methods decorated with `@metric` must return a `dict`; it is saved to `<name>_results.json` and becomes a row of `<name>_episodes.csv` on each `end_episode()`.
-
-See [`src/eval_vla/metrics/README.md`](src/eval_vla/metrics/README.md) for a description of every available metric.
