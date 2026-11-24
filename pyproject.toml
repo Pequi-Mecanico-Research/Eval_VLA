@@ -5,7 +5,8 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "clip==0.2.0",
+    "openai-clip>=1.0.1",
+    "setuptools<81",  # openai-clip imports pkg_resources, removed in newer setuptools
     "ftfy>=6.3.1,<7",
     "mediapipe>=1.2.2,<2",
     "ollama>=0.6.3,<1",
@@ -17,5 +18,16 @@ dependencies = [
     "ultralytics>=8.4.183,<9",
 ]
 
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [tool.setuptools.package-data]
 eval_vla = ["metrics/models/*.urdf"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

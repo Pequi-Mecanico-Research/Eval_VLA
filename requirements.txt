@@ -1,4 +1,4 @@
-clip==0.2.0
+openai-clip>=1.0.1
 ftfy>=6.3.1,<7
 mediapipe>=1.2.2,<2
 ollama>=0.6.3,<1
@@ -8,3 +8,4 @@ rerun-sdk>=0.23.1,<0.44
 timm>=1.0.30,<2
 trossen-arm>=1.9.0,<1.10.0
 ultralytics>=8.4.183,<9
+setuptools<81

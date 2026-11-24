@@ -11,6 +11,20 @@ os.environ["QT_QPA_FONTDIR"] = "/usr/share/fonts/truetype/dejavu"
 import numpy as np
 from torchvision.ops import nms
 
+def _patch_clip_tokenizer() -> None:
+    """SAM3 (ultralytics) calls `SimpleTokenizer()(texts, context_length=...)`, which only exists in Ultralytics' CLIP fork.
+
+    The PyPI `openai-clip` has the same tokenizer without `__call__`, so add it (same behavior as `clip.tokenize`).
+    """
+    import clip
+
+    tokenizer = clip.simple_tokenizer.SimpleTokenizer
+    if "__call__" not in vars(tokenizer):
+        tokenizer.__call__ = lambda self, texts, context_length=77: clip.tokenize(texts, context_length=context_length, truncate=True)
+
+
+_patch_clip_tokenizer()
+
 WEIGHTS_DIR = Path(__file__).parent / "model_weights"
 SAM_WEIGHTS = {
     "sam2": WEIGHTS_DIR / "sam2.1_b.pt", 
