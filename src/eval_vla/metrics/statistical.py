@@ -97,7 +97,7 @@ class Statistical(EvalVLA):
                 self.success_rate_value = 0 < before["table"] == after["container"] and after["table"] == 0
                 if debug_plots:
                     for name, frame in (("before", before_frame), ("after", after_frame)):
-                        debug_pipeline(frame, reference_frame, rois, save_path=self.output_dir / f"ep{self._episode}_{name}_debug.png")
+                        debug_pipeline(frame, reference_frame, rois, save_path=self.episode_dir() / f"{name}_debug.png")
         else:
             warnings.warn(f"Unknown task {task_name!r}, counting as failure. Known tasks: {list(TASKS)}", stacklevel=3)
             self.success_rate_value = False

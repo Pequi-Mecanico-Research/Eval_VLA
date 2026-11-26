@@ -59,8 +59,8 @@ def main(n_episodes: int = 2, steps_per_episode: int = 5, viewer: str = "rerun")
     rois = RoiSelector.load_or_create(rois_path, ["table", "container"], reference_image)
 
     for ep in range(n_episodes):
-        before_frame = camera.capture(stats.output_dir / f"ep{ep}_before.png")
-        camera.start_recording(stats.output_dir / f"ep{ep}_debug.mp4", preview=view.preview)  
+        before_frame = camera.capture(stats.episode_dir(ep) / "before.png")
+        camera.start_recording(stats.episode_dir(ep) / "video.mp4", preview=view.preview)  
         
         start_time = time.perf_counter()
         for _ in range(steps_per_episode):
@@ -75,7 +75,7 @@ def main(n_episodes: int = 2, steps_per_episode: int = 5, viewer: str = "rerun")
 
         camera.wait_for_enter(f"Episode {ep}: press Enter to run (Adicione os objetos ao Tot antes de finalizar a task.)...", on_tick=view.update)
         
-        after_frame = camera.capture(stats.output_dir / f"ep{ep}_after.png")
+        after_frame = camera.capture(stats.episode_dir(ep) / "after.png")
         camera.stop_recording()
 
         stats.success_rate(task_name, "image_diff", before_frame, after_frame, reference_frame=reference_image, rois=rois, debug_plots=debug_plots)

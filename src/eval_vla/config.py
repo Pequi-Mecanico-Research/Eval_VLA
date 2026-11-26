@@ -35,6 +35,10 @@ class SetupConfig:
     "object", "layout", "camera", "lighting", "background", "initial_state", "sensor_noise".
     None means a nominal (unperturbed) run.
 
+    Weights & Biases (optional): with `wandb=True` the metrics and graphs of every episode are also sent to the
+    project `wandb_project`, with this config, so that evaluations can be compared. Needs a previous `wandb login`
+    in the terminal.
+
     """
 
     #TODO:Deixar as possíveis variáveis dentro mapping mais rigidas no formato.
@@ -51,3 +55,5 @@ class SetupConfig:
     experiment_name: str
     task_name: str
     perturbation_type: list[str] | None = None
+    wandb: bool = False
+    wandb_project: str | None = None

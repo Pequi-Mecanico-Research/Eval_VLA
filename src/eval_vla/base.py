@@ -1,4 +1,5 @@
 from .config import SetupConfig
+from .wandb_logger import log_episode, start_run
 from pathlib import Path
 import json
 import functools
@@ -30,30 +31,48 @@ class EvalVLA:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.json_path = self.output_dir / (f"{name}_results.json" if name else "results.json")
         self.csv_path = self.output_dir / (f"{name}_episodes.csv" if name else "episodes.csv")
+        self.name = name or type(self).__name__.lower()
         self._results: dict[str, dict] = {}
         self._episode = 0
+        self._history: dict[str, list[float]] = {}             
+        self._wandb_run = start_run(config, self.output_dir.name) if config.wandb else None
 
 
-    def _save_json(self) -> None:
+    def episode_dir(self, episode: int | None = None) -> Path:
+        """Folder `ep_<episode>` (0-based) with the files of one episode, created if missing.
+
+        If `episode` is None, uses the episode being evaluated.
+        """
+        path = self.output_dir / f"ep_{self._episode if episode is None else episode}"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+
+    def _save_json(self, folder: Path, episode: int) -> None:
         report = {
             "config": dataclasses.asdict(self.config),
-            "episodes_completed": self._episode,
+            "episode": episode,
             "updated_at": datetime.now().isoformat(),
             "metrics": self._results,
         }
-        tmp = self.json_path.with_suffix(".tmp")
+        path = folder / self.json_path.name
+        tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(report, indent=2))
-        tmp.replace(self.json_path)
+        tmp.replace(path)
 
 
-    def _append_csv(self, extra: dict) -> None:
+    def _row(self, extra: dict) -> dict:
         row = {"episode": self._episode, **extra}
-        for name, result in self._results.items():
+        for result in self._results.values():
             if result:
                 row.update(result)
-        new_file = not self.csv_path.exists()
+        return row
 
-        with self.csv_path.open("a", newline="") as f:
+
+    def _append_csv(self, path: Path, row: dict) -> None:
+        new_file = not path.exists()
+
+        with path.open("a", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=list(row.keys()), extrasaction="ignore")
             if new_file:
                 writer.writeheader()
@@ -67,11 +86,38 @@ class EvalVLA:
 
 
     def end_episode(self, **extra) -> None:
-        """Call once per episode: overwrites the JSON, appends to the CSV and refreshes the graphs."""
+        """Call once per episode.
+
+        Saves the episode metadata (JSON and one-row CSV) in its `ep_<n>` folder, appends it to the CSV of the
+        whole run, refreshes the graphs of the run and, with `config.wandb`, sends them to Weights & Biases.
+        The metric results are then cleared for the next episode.
+
+        Args:
+            **extra: Additional columns. `episode` (1-based) overrides the episode number, e.g. for an instance
+                created for a single episode; its folder is `ep_<episode - 1>`.
+        """
         self._episode += 1
-        self._save_json()
-        self._append_csv(extra)
+        row = self._row(extra)
+        folder = self.episode_dir(row["episode"] - 1)
+
+        self._save_json(folder, row["episode"] - 1)
+        episode_csv = folder / self.csv_path.name
+        episode_csv.unlink(missing_ok=True)
+        self._append_csv(episode_csv, row)
+        self._append_csv(self.csv_path, row)
+
+        graphs = True
         try:
             self._save_graphs()
         except Exception as exc:  
+            graphs = False
             print(f"Could not save graphs: {exc!r}")
+
+        if self._wandb_run is not None:
+            graph = self.output_dir / f"{self.name}.png"
+            try:
+                log_episode(self._wandb_run, self.name, row, self._history, graph if graphs and graph.exists() else None)
+            except Exception as exc: 
+                print(f"Could not log to wandb: {exc!r}")
+
+        self._results = {}

@@ -50,7 +50,7 @@ def main(n_episodes: int = 2, steps_per_episode: int = 100, ip: str = "192.168.1
     calibration = COLLISION_CALIBRATION if COLLISION_CALIBRATION.exists() and not calibrate_collision else None
 
     for ep in range(n_episodes):
-        video_path = operation.output_dir / f"ep{ep}.mp4"       
+        video_path = operation.episode_dir(ep) / "video.mp4"       
         camera.start_recording(video_path, preview=view.preview)
 
         for step in range(steps_per_episode):
