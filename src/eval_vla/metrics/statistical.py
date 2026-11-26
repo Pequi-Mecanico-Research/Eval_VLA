@@ -10,7 +10,7 @@ from ..base import EvalVLA, metric
 from ..config import SetupConfig
 from ..plots import plot_statistical
 from ..success_detection.background_subtraction import count_objects_in_rois, debug_pipeline
-from ..success_detection.sam_inference import ObjectDetection
+from ..success_detection.open_vocab_detection import ObjectDetection
 
 
 def _round(value: float, precision: int) -> float:
@@ -48,7 +48,7 @@ class Statistical(EvalVLA):
 
 
     @metric
-    def success_rate(self, task_name: str, task_mode: str, before_frame: np.ndarray, after_frame: np.ndarray, prompt: list[str] = None, reference_frame: np.ndarray = None, rois = None, model: str = "sam3", debug_plots: bool = True, weights: str | Path | None = None) -> dict[str, float]:
+    def success_rate(self, task_name: str, task_mode: str, before_frame: np.ndarray, after_frame: np.ndarray, prompt: list[str] = None, reference_frame: np.ndarray = None, rois = None, model: str = "sam3", debug_plots: bool = True, weights: str | Path | None = None, imgsz: int | None = None, conf: float | None = None) -> dict[str, float]:
         """Checks whether the policy moved the objects from the table into the container.
 
         Modes (`task_mode`):
@@ -65,12 +65,16 @@ class Statistical(EvalVLA):
             prompt: Names/descriptions of the objects to segment.
             reference_frame: Empty-table image used as baseline in "image_diff".
             rois: Regions of interest where the objects start (table) and end (container).
-            model: Segmentation model used in "model_segmentation".
+            model: Detection model used in "model_segmentation": "sam3" or "yoloworld".
             debug_plots: Saves the debug images of "image_diff".
             weights: Path to the weights file (e.g. `sam3.pt`) of `model`, used in "model_segmentation".
                 If None, looks for `model_weights/<model>.pt` inside the package, which is not shipped
                 with the pip install; download it first (see the root README). Only read the first time
-                the detector is created.
+                the detector is created. "yoloworld" weights are downloaded to this path if missing.
+            imgsz: Inference size of `model`, used in "model_segmentation". If None, uses 644 for "sam3" and
+                640 for "yoloworld" (multiples of their strides). Only read the first time the detector is created.
+            conf: Minimum confidence of a detection, used in "model_segmentation". If None, uses 0.25 for "sam3"
+                and 0.5 for "yoloworld". Only read the first time the detector is created.
 
         Returns:
             dict with `successes` (bool), `objects_on_table_before` and
@@ -78,7 +82,7 @@ class Statistical(EvalVLA):
         """
         if task_name == "Organize_the_table":    
             if task_mode == "model_segmentation":
-                self.detector = self.detector or ObjectDetection("image", model=model, weights=weights)
+                self.detector = self.detector or ObjectDetection("image", model=model, weights=weights, imgsz=imgsz, conf=conf)
                 before = self.detector.run(before_frame, prompt, rois)
                 after = self.detector.run(after_frame, prompt, rois)
                 self.success_rate_value = 0 < before["table"] == after["container"]  

@@ -9,7 +9,7 @@ import trossen_arm
 from ..base import EvalVLA, metric
 from ..config import SetupConfig
 from ..plots import plot_operation
-from ..success_detection.sam_inference import ObjectDetection
+from ..success_detection.open_vocab_detection import ObjectDetection
 
 HUMAN_PROMPTS = ["hand", "human arm"]
 
@@ -73,19 +73,24 @@ class Operation(EvalVLA):
 
 
     @metric
-    def human_intervention_rate(self, video_path: str | Path, model: str = "sam3", prompt: list[str] = HUMAN_PROMPTS, precision: int = 3, weights: str | Path | None = None, **detection_kwargs) -> dict[str, float]:
+    def human_intervention_rate(self, video_path: str | Path, model: str = "sam3", prompt: list[str] = HUMAN_PROMPTS, precision: int = 3, weights: str | Path | None = None, imgsz: int | None = None, conf: float | None = None, **detection_kwargs) -> dict[str, float]:
         """Detects whether a human entered the scene during the episode, i.e. needed to intervene manually.
 
         Call once per episode, on the recorded video.
 
         Args:
             video_path: Video of the episode.
-            model: Segmentation model used to find the human in the video.
+            model: Detection model used to find the human in the video: "sam2", "sam3" or "yoloworld".
             prompt: Descriptions of what counts as a human intervention (e.g. "hand", "human arm").
             precision: Decimal places used to round the returned values.
             weights: Path to the weights file (e.g. `sam3.pt`) of `model`. If None, looks for
                 `model_weights/<model>.pt` inside the package, which is not shipped with the pip install;
-                download it first (see the root README). Only read the first time the detector is created.
+                download SAM weights first (see the root README); "yoloworld" weights are downloaded to this path
+                if missing. Only read the first time the detector is created.
+            imgsz: Inference size of `model`. If None, uses 640 for "sam2" and "yoloworld" and 644 for "sam3"
+                (multiples of their strides). Only read the first time the detector is created.
+            conf: Minimum confidence of a detection. If None, uses 0.70 for the SAM models and 0.5 for
+                "yoloworld". Only read the first time the detector is created.
             **detection_kwargs: Extra arguments passed to `ObjectDetection.run`.
 
         Returns:
@@ -94,7 +99,7 @@ class Operation(EvalVLA):
             `human_intervention_rate` (fraction of the `episodes` with at least one intervention so far).
         """
 
-        self.human_detector = self.human_detector or ObjectDetection("video", model=model, weights=weights)
+        self.human_detector = self.human_detector or ObjectDetection("video", model=model, weights=weights, imgsz=imgsz, conf=conf)
         intervals = self.human_detector.run(video_path, prompt, **detection_kwargs)
 
         self.human_intervention_count += bool(intervals)

@@ -1,8 +1,16 @@
-# Pequi_Mêcanico_UFG-eval
+# Pequi_Mêcanico_UFG_EVAL
 
 Métricas reprodutíveis para avaliar modelos Vision-Language-Action (VLA).
 
-## Instalação
+## Uso como pacote pip
+
+Ao entrar em um repositório que implementa uma política de VLA, basta instalar o pacote no ambiente dele:
+
+```bash
+pip install eval_vla
+```
+
+## Instalação Local
 
 **Recomendação** - Utilizar o uv como gerenciador de pacotes, caso não tenha instalado, siga os passos em https://docs.astral.sh/uv/getting-started/installation/
 
@@ -12,14 +20,6 @@ cd Eval_VLA
 uv venv
 source .venv/bin/activate
 uv sync
-```
-
-## Uso como pacote pip
-
-Ao entrar em um repositório que implementa uma política de VLA, basta instalar o pacote no ambiente dele:
-
-```bash
-uv pip install eval_vla
 ```
 
 Em seguida, somente implemente as métricas dentro do loop de avaliação da sua política, como mostrado em [Uso como repositório local](#uso-como-repositório-local) e nos arquivos de `examples/`.
@@ -38,7 +38,16 @@ operation.human_intervention_rate(video_path, model="sam3", weights="weights/sam
 
 Se `weights` não for informado, o pacote procura em `model_weights/<modelo>.pt` dentro do próprio pacote, que só existe ao rodar o repositório com os pesos colocados lá.
 
-## Uso como repositório local
+### Alternativa leve: YOLO-World
+
+As mesmas métricas aceitam `model="yoloworld"`, bem menor e mais rápido que o SAM3. Os pesos são **baixados automaticamente** no caminho passado em `weights`, caso não existam. O nome do arquivo deve ser um dos oficiais: `yolov8{s,m,l,x}-world.pt` ou `yolov8{s,m,l,x}-worldv2.pt`. Sem `weights`, usa `yolov8s-world.pt`. Na primeira execução o encoder de texto CLIP (ViT-B/32) também é baixado.
+
+```python
+stats.success_rate(..., model="yoloworld", weights="weights/yolov8s-world.pt", conf=0.5)
+operation.human_intervention_rate(video_path, model="yoloworld", conf=0.5)
+```
+
+## Uso ao clonar repositório local
 
 Código utilizado como demonstração de uso em algum repositório que implemente uma política de VLA e gostariamos de avalia-lá:
 
