@@ -47,6 +47,20 @@ stats.success_rate(..., model="yoloworld", weights="weights/yolov8s-world.pt", c
 operation.human_intervention_rate(video_path, model="yoloworld", conf=0.5)
 ```
 
+### Análise de falhas com Hugging Face
+
+A `FailureAnalysis` usa o Ollama por padrão (`mode="ollama"`). Para rodar o Qwen pelo `transformers`, instale o extra e use `mode="hf"`; os pesos são baixados em `model_weights` na primeira execução:
+
+```bash
+pip install "eval_vla[hf]"   # no repositório clonado: uv sync --extra hf
+```
+
+```python
+FailureAnalysis(config, video_path, mode="hf", model_weights="weights/Qwen3.5-9B")
+```
+
+O `Qwen/Qwen3.5-9B` ocupa cerca de 19 GB em disco e não cabe inteiro numa GPU de 16 GB; o excedente vai para a RAM, o que deixa a inferência lenta. Um modelo menor pode ser escolhido com `vlm_model="Qwen/Qwen3.5-4B"`.
+
 ## Uso ao clonar repositório local
 
 Código utilizado como demonstração de uso em algum repositório que implemente uma política de VLA e gostariamos de avalia-lá:
@@ -116,8 +130,9 @@ reference_image = load_or_capture_reference(camera, CALIBRATION_DIR / config.tas
 rois = RoiSelector.load_or_create(CALIBRATION_DIR / config.task_name / "rois.json", ["table", "container"], reference_image)
 
 for ep in range(n_episodes):
-    video_path = run_dir / f"ep{ep}.mp4"
-    before_frame = camera.capture(run_dir / f"ep{ep}_before.png")  # cena antes da tarefa
+    episode_dir = stats.episode_dir(ep)  # pasta run_dir/ep_<n>
+    video_path = episode_dir / "video.mp4"
+    before_frame = camera.capture(episode_dir / "before.png")  # cena antes da tarefa
     camera.start_recording(video_path, preview=view.preview)
 
     start_time = time.perf_counter()
@@ -140,7 +155,7 @@ for ep in range(n_episodes):
     stats.task_completion_time(start_time, time.perf_counter())
 
     camera.wait_for_enter(f"Episode {ep}: add the objects to the tot before finishing the task, then press Enter...", on_tick=view.update)
-    after_frame = camera.capture(run_dir / f"ep{ep}_after.png")  # cena depois da tarefa
+    after_frame = camera.capture(episode_dir / "after.png")  # cena depois da tarefa
     camera.stop_recording()
 
     # sucesso medido comparando antes/depois com segmentação (SAM3) dentro das ROIs
@@ -158,7 +173,7 @@ for ep in range(n_episodes):
 
 ```python
     # ainda dentro do loop de episódios
-    stats.end_episode()  # sobrescreve o JSON, acrescenta uma linha no CSV e atualiza os gráficos
+    stats.end_episode()  # salva o episódio em ep_<n>, acrescenta uma linha no CSV da execução e atualiza os gráficos
     operation.end_episode()
     long_horizon.end_episode()
 
@@ -173,7 +188,34 @@ view.close()
 camera.close()
 ```
 
-Ao final, a pasta `run_dir` contém, para cada família, `<name>_results.json`, `<name>_episodes.csv` e os gráficos gerados a partir do CSV.
+Ao final, a pasta `run_dir` contém:
+
+```
+run_dir/
+├── <name>_episodes.csv      # todos os episódios, uma linha cada (por família)
+├── <name>.png               # gráficos da execução
+├── ep_0/
+│   ├── <name>_results.json  # métricas e config do episódio
+│   ├── <name>_episodes.csv  # a linha do episódio
+│   └── video.mp4, before.png, after.png, ...
+└── ep_1/
+```
+
+Os resultados das métricas são limpos a cada `end_episode()`: uma métrica não chamada no episódio não aparece nele.
+
+### Comparação entre avaliações com Weights & Biases (opcional)
+
+O `wandb` já é instalado junto com o pacote; basta fazer o login:
+
+```bash
+wandb login   # uma vez, no terminal
+```
+
+```python
+config = SetupConfig(..., wandb=True, wandb_project="eval-vla")
+```
+
+Cada execução vira um run do projeto (com o `SetupConfig`), com as métricas e os gráficos por episódio. As médias de cada métrica vão para o resumo do run (`<name>/<métrica>_mean`), para comparar uma avaliação com outra.
 
 ## Adicionando uma nova classe de métricas
 

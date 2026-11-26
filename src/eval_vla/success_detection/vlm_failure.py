@@ -1,14 +1,23 @@
-"""Failure-type classification of an episode video with a vision-language model served by Ollama."""
+"""Failure-type classification of an episode video with a vision-language model.
+
+Two inference modes: "ollama" (model served by an Ollama server) and "hf" (Hugging Face `transformers` in this
+process, needs the `hf` extra: `pip install "eval_vla[hf]"`).
+"""
 
 from __future__ import annotations
 
 import base64
+import functools
+import io
 import json
 import urllib.request
 from pathlib import Path
 
 import cv2
 import numpy as np
+
+DEFAULT_MODELS = {"ollama": "qwen3.5:latest", "hf": "Qwen/Qwen3.5-9B"}
+HF_WEIGHTS_DIR = Path(__file__).parent / "model_weights"
 
 FAILURE_DESCRIPTIONS = {
     "perception": "the policy misidentifies or fails to locate the target object",
@@ -87,32 +96,109 @@ def parse_failure_type(text: str) -> str | None:
     return min(hits)[1] if hits else None
 
 
-def classify_failure(video_path: str | Path, task: str, success_criteria: str, window_s: float = 30.0,
-                     n_frames: int = 16, model: str = "qwen3.5:latest", host: str = "http://localhost:11434",
-                     timeout_s: float = 300.0, debug_video_path: str | Path | None = None,
-                     num_ctx: int = 16384) -> tuple[str | None, str]:
+def download_hf_weights(model: str, model_weights: str | Path) -> Path:
+    """Downloads the Hugging Face repository `model` into the folder `model_weights`, unless it is already there.
 
-    frames = sample_frames(video_path, window_s, n_frames)
+    The folder holds one model: if it has the config and every weight file, nothing is downloaded (no network
+    access). An interrupted download is resumed.
+    """
+    folder = Path(model_weights)
+    index = folder / "model.safetensors.index.json"
+    if index.exists():
+        files = set(json.loads(index.read_text())["weight_map"].values())
+    else:
+        files = {"model.safetensors"}
 
-    if debug_video_path is not None:
-        save_debug_video(frames, debug_video_path)
+    if (folder / "config.json").exists() and all((folder / name).exists() for name in files):
+        return folder
 
+    from huggingface_hub import snapshot_download
+
+    print(f"Downloading {model} to {folder} (this happens only once)...")
+    snapshot_download(repo_id=model, local_dir=folder)
+    return folder
+
+
+@functools.lru_cache(maxsize=1)
+def _load_hf_pipeline(folder: str):
+    """The pipeline is kept in memory so that the weights are loaded once, not at every episode."""
+    try:
+        from transformers import pipeline
+    except ImportError as exc:
+        raise ImportError('mode="hf" needs transformers and accelerate: pip install "eval_vla[hf]"') from exc
+
+    return pipeline("image-text-to-text", model=folder, device_map="auto", dtype="auto")
+
+
+def _infer_ollama(frames: list[bytes], prompt: str, model: str, host: str, timeout_s: float, num_ctx: int) -> str:
     payload = {
         "model": model,
         "stream": False,
         "think": False,
         "messages": [{
             "role": "user",
-            "content": build_prompt(task, success_criteria, len(frames), window_s),
+            "content": prompt,
             "images": [base64.b64encode(f).decode() for f in frames],
         }],
         "options": {"temperature": 0, "num_ctx": num_ctx},
     }
-    
+
     request = urllib.request.Request(f"{host}/api/chat", data=json.dumps(payload).encode(),
                                      headers={"Content-Type": "application/json"})
-    
+
     with urllib.request.urlopen(request, timeout=timeout_s) as response:
-        reply = json.load(response)["message"]["content"]
+        return json.load(response)["message"]["content"]
+
+
+def _infer_hf(frames: list[bytes], prompt: str, model: str, model_weights: str | Path | None, max_new_tokens: int = 32) -> str:
+    from PIL import Image
+
+    folder = download_hf_weights(model, model_weights or HF_WEIGHTS_DIR / model.split("/")[-1])
+    pipe = _load_hf_pipeline(str(folder))
+
+    content = [{"type": "image", "image": Image.open(io.BytesIO(f)).convert("RGB")} for f in frames]
+    messages = [{"role": "user", "content": [*content, {"type": "text", "text": prompt}]}]
+
+    output = pipe(text=messages, return_full_text=False, enable_thinking=False,
+                  generate_kwargs={"max_new_tokens": max_new_tokens, "do_sample": False})
     
+    return output[0]["generated_text"]
+
+
+def classify_failure(video_path: str | Path, task: str, success_criteria: str, window_s: float = 30.0,
+                     n_frames: int = 16, model: str | None = None, host: str = "http://localhost:11434",
+                     timeout_s: float = 300.0, debug_video_path: str | Path | None = None,
+                     num_ctx: int = 16384, mode: str = "ollama",
+                     model_weights: str | Path | None = None) -> tuple[str | None, str]:
+    """Asks a vision-language model which failure type the end of the video shows.
+
+    Args:
+        mode: "ollama" or "hf" (Hugging Face `transformers`).
+        model: Model name of the chosen mode. If None, uses `DEFAULT_MODELS[mode]`.
+        host, timeout_s, num_ctx: Only used by "ollama".
+        model_weights: Only used by "hf". Folder of the weights, downloaded there if missing. If None, uses
+            `model_weights/<model name>` inside the package.
+
+    Returns:
+        The failure type (or None if the reply was not recognized) and the model reply.
+
+    Raises:
+        ValueError: If `mode` is not "ollama" or "hf".
+    """
+    if mode not in DEFAULT_MODELS:
+        raise ValueError(f"mode must be one of {list(DEFAULT_MODELS)}, got {mode!r}")
+    model = model or DEFAULT_MODELS[mode]
+
+    frames = sample_frames(video_path, window_s, n_frames)
+
+    if debug_video_path is not None:
+        save_debug_video(frames, debug_video_path)
+
+    prompt = build_prompt(task, success_criteria, len(frames), window_s)
+
+    if mode == "hf":
+        reply = _infer_hf(frames, prompt, model, model_weights)
+    else:
+        reply = _infer_ollama(frames, prompt, model, host, timeout_s, num_ctx)
+
     return parse_failure_type(reply), reply

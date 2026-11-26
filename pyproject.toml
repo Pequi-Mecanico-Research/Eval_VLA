@@ -1,6 +1,6 @@
 [project]
 name = "eval_vla"
-version = "0.2.4"
+version = "0.2.5"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -16,6 +16,14 @@ dependencies = [
     "timm>=1.0.30,<2",
     "trossen_arm>=1.9.0,<1.10.0",
     "ultralytics>=8.4.183,<9",
+    "lap>=0.5.12",
+    "wandb>=0.20,<1",
+]
+
+[project.optional-dependencies]
+hf = [
+    "accelerate>=1.16,<2",
+    "transformers>=5.24,<6",
 ]
 
 [build-system]

@@ -12,7 +12,8 @@ from eval_vla.metrics.failure_analysis import FailureAnalysis
 import time
 
 
-def main(video: str, window_s: float = 30.0, motion_threshold: float = 0.02) -> None:
+def main(video: str, window_s: float = 30.0, motion_threshold: float = 0.02, mode: str = "ollama",
+         model_weights: str | None = None) -> None:
     config = SetupConfig(
         robot_embodiment={"manufacturer": "Trossen", "model": "WidowX", "dof": 6, "end_effector": "Precision Gripper"},
         camera_configuration={"count": 3, "positions": ["wrist", "front", "high"], "resolution": [640, 480], "wrist": True},
@@ -30,7 +31,7 @@ def main(video: str, window_s: float = 30.0, motion_threshold: float = 0.02) -> 
 
     start_time = time.perf_counter()
 
-    analysis = FailureAnalysis(config, video, window_s=window_s, debug_video=True)
+    analysis = FailureAnalysis(config, video, window_s=window_s, debug_video=True, mode=mode, model_weights=model_weights)
 
     print(f"\n{video}")
     print("  failure type      :", analysis.failure_type)
@@ -45,5 +46,7 @@ if __name__ == "__main__":
     parser.add_argument("--video", type=str, help="episode video to analyze")
     parser.add_argument("--window", type=float, default=30.0, help="seconds at the end of the video to analyze")
     parser.add_argument("--threshold", type=float, default=0.02, help="motion std (fraction of the frame diagonal) below which the arm counts as still")
+    parser.add_argument("--mode", choices=["ollama", "hf"], default="ollama", help="VLM inference backend")
+    parser.add_argument("--model_weights", help="folder of the Hugging Face weights, downloaded if missing (mode hf)")
     args = parser.parse_args()
-    main(args.video, args.window, args.threshold)
+    main(args.video, args.window, args.threshold, args.mode, args.model_weights)

@@ -196,7 +196,7 @@ Estrutura usada para cada método:
 
 ### `vlm_failure_type`
 
-- **Para que serve:** Descobrir, com um modelo visão-linguagem (VLM, via Ollama), qual tipo de falha o vídeo do episódio mostra.
+- **Para que serve:** Descobrir, com um modelo visão-linguagem (VLM, via Ollama ou Hugging Face), qual tipo de falha o vídeo do episódio mostra.
 - **O que faz:** Amostra `vlm_frames` frames dos últimos `window_s` segundos do vídeo e os envia ao VLM junto com o nome da tarefa e o critério de sucesso do config. Roda automaticamente quando `FailureAnalysis` é criada.
 - **Variáveis de entrada:** O método não recebe argumentos; as entradas são definidas no `__init__`.
 
@@ -204,7 +204,9 @@ Estrutura usada para cada método:
   |---|---|
   | `video_path` | Vídeo do episódio analisado. |
   | `window_s` | Janela final do vídeo (em segundos) usada na análise. |
-  | `vlm_model` | Modelo do Ollama usado (padrão `qwen3.5:latest`). |
+  | `vlm_model` | Modelo usado. Padrão: `qwen3.5:latest` no modo `"ollama"` e `Qwen/Qwen3.5-9B` no modo `"hf"`. |
+  | `mode` | `"ollama"` (padrão) ou `"hf"` (inferência local com `transformers`; instale com `pip install "eval_vla[hf]"`). `vlm_host`, `vlm_timeout_s` e `vlm_num_ctx` só valem no `"ollama"`. |
+  | `model_weights` | Só no `"hf"`: pasta dos pesos (uma por modelo), baixados nela se ainda não existirem (cerca de 19 GB no 9B). Se `None`, usa `model_weights/<nome do modelo>` dentro do pacote. |
   | `vlm_host` | Endereço do servidor Ollama. |
   | `vlm_frames` | Número de frames amostrados para o VLM. |
   | `debug_video` | Salva um vídeo com os frames enviados ao VLM. |
