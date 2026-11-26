@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from pathlib import Path
 
 import numpy as np
@@ -10,27 +11,33 @@ from ..base import EvalVLA, metric
 from ..config import SetupConfig
 from ..plots import plot_operation
 from ..success_detection.open_vocab_detection import ObjectDetection
+from ..tasks import CollisionObserver, end_effector_inertia, friction_efforts, read_friction
 
 HUMAN_PROMPTS = ["hand", "human arm"]
 
 URDF_PATH = Path(__file__).parent / "models" / "wxai.urdf"
 
-COLLISION_RESIDUAL_THRESHOLDS = [3.0] * 6             # Nm per arm joint, applied to the GMO residual
+COLLISION_RESIDUAL_THRESHOLDS = [3.0] * 6             # Nm per arm joint, used without a calibration file
+COLLISION_K = 5.0                                     # standard deviations of the calibrated threshold
+COLLISION_MIN_THRESHOLD = 0.5                         # Nm, floor of the calibrated threshold
+COLLISION_MIN_SAMPLES = 5                             # consecutive samples of a same joint that validate a collision
+COLLISION_WARMUP_S = 0.5                              # s ignored at the start of the episode, while the residual settles
 GMO_GAIN = 20.0                                       # 1/s, observer gain K_O (residual time constant 1/K_O)
 JOINT_JERK_THRESHOLDS = [500.0] * 6 + [50.0]          # rad/s^3 per arm joint, m/s^3 for the gripper
-LINEAR_JERK_THRESHOLD = 50.0                          # m/s^3 (end effector)
-ANGULAR_JERK_THRESHOLD = 500.0                        # rad/s^3 (end effector)
+JERK_MIN_OCCURRENCES = 3                              # threshold crossings of a same joint that flag the episode
+JERK_MEDIAN_WINDOW = 3                                # samples, removes single-sample spikes
+JERK_SMOOTHING_WINDOW = 5                             # samples, moving average applied after the median
 SLEEP_POSITIONS = [0.0] * 7                         
 
 
-class Operation(EvalVLA):
+class Operation(CollisionObserver, EvalVLA):
     """Operational metrics.
 
     Human intervention rate (fraction of trials requiring manual correction during execution).
 
-    Collision rate (fraction of trials in which unintended contact occurs).
+    Collision detection (whether unintended contact occurs during the episode).
 
-    Jerks rate (fraction of trials which show substântial jerk / measure jerk_rate)z.
+    Jerk detection (whether a joint repeatedly shows substantial jerk during the episode).
 
     Reset failure rate (fraction of trials in which the reset procedure itself fails or introduces bias).
     """
@@ -47,25 +54,33 @@ class Operation(EvalVLA):
         carriages = [model.getJointId(n) for n in ("left_carriage_joint", "right_carriage_joint")]
         self.gmo_model = pin.buildReducedModel(model, carriages, pin.neutral(model))
         self.gmo_data = self.gmo_model.createData()
-        self.gmo_residual: np.ndarray | None = None
-        self.gmo_integral: np.ndarray | None = None
-        self.gmo_p0: np.ndarray | None = None
-        self.gmo_time: float = 0.0
-        self.collision_count: int = 0
+        self.gmo_residual: np.ndarray = np.zeros(self.gmo_model.nv)
+        self.gmo_previous: tuple[np.ndarray, np.ndarray] | None = None    # momentum and tau + beta of the last sample
+        self.gmo_friction: dict[str, np.ndarray] | None = None
         self.collision_detected_value: bool = False
         self.collision_episode: int | None = None
-        self.collision_peaks: list[float] = []
+        self.collision_mode: str | None = None
+        self.collision_calibration: dict | None = None
+        self.collision_start: float | None = None                         # timestamps of the first and last samples
+        self.collision_time: float | None = None
+        self.collision_values: np.ndarray = np.zeros(self.gmo_model.nv)
+        self.collision_consecutive: np.ndarray = np.zeros(self.gmo_model.nv, dtype=int)
+        self.collision_streaks: np.ndarray = np.zeros(self.gmo_model.nv, dtype=int)
+        self.collision_peaks: np.ndarray = np.zeros(self.gmo_model.nv)
+        self.collision_samples: list[np.ndarray] = []                     # signal of the episode, for calibration
 
         self.reset_failure_count: int = 0
         self.reset_trials: int = 0
 
-        self.jerks_count: int = 0
-        self.jerks_trials: int = 0
         self.jerks_detected_value: bool = False
         self.jerks_episode: int | None = None
-        self.jerks_peaks: list[float] = []
-        self.jerks_times: list[float] = []
-        self.jerks_accelerations: list[list[float]] = []
+        self.jerks_values: list[float] = [0.0] * len(JOINT_JERK_THRESHOLDS)
+        self.jerks_exceedances: np.ndarray | None = None
+        self.jerks_above: np.ndarray | None = None
+        self.jerks_raw: deque | None = None                    # last accelerations, input of the median
+        self.jerks_medians: deque | None = None                # last medians, input of the moving average
+        self.jerks_smoothed: np.ndarray | None = None          # last filtered acceleration
+        self.jerks_time: float | None = None                   # timestamp of the last sample
 
 
     def _save_graphs(self) -> None:
@@ -114,139 +129,158 @@ class Operation(EvalVLA):
 
     @metric
     def collision_rate(self, driver: trossen_arm.TrossenArmDriver, mode: str = "gmo", thresholds: list[float] = COLLISION_RESIDUAL_THRESHOLDS,
-                       gain: float = GMO_GAIN, precision: int = 3) -> dict:
+                       gain: float = GMO_GAIN, precision: int = 3, calibration: str | Path | None = None, k: float = COLLISION_K,
+                       min_samples: int = COLLISION_MIN_SAMPLES) -> dict:
         """Detects unintended contact (collision) during the episode from the arm joint torques.
 
-        Call at every control step. It keeps the peak of the signal per joint during the episode and flags
-        a collision when any peak exceeds its threshold.
+        Call at every control step. A collision is validated when the signal of a same joint stays above
+        its threshold for `min_samples` consecutive calls. The first `COLLISION_WARMUP_S` seconds of each
+        episode and calls with a repeated timestamp are ignored.
 
         Modes (`mode`):
             - "gmo": generalized momentum observer. The residual estimates the external torque using the
-              arm dynamic model (URDF) and the measured positions, velocities and efforts.
+              arm dynamic model (URDF, with the end effector and friction configured in the driver) and the
+              measured positions, velocities, accelerations and efforts.
             - "driver": uses the external efforts already reported by the arm driver.
 
         Args:
             driver: Connected Trossen arm driver, read at each call.
             mode: "gmo" or "driver".
-            thresholds: Maximum accepted absolute value per arm joint, in Nm.
+            thresholds: Maximum accepted absolute value per arm joint, in Nm, without `calibration`.
             gain: Observer gain K_O of the "gmo" mode, in 1/s. Higher values react faster but add noise.
             precision: Decimal places used to round the returned values.
+            calibration: JSON written by `save_collision_calibration`. The mean of each joint is subtracted
+                from the signal and its threshold becomes `max(k * std, COLLISION_MIN_THRESHOLD)`.
+                Read at the first call of each episode.
+            k: Number of standard deviations of the calibrated threshold.
+            min_samples: Consecutive samples above the threshold that validate a collision.
 
         Returns:
-            dict with `collision_mode`, `collision_detected` (this episode), `collision_rate` (fraction of the
-            `episodes` with a collision so far), `collision_thresholds` and `collision_values` (peak per joint).
+            dict with `collision_mode`, `collision_detected` (this episode), `collision_values` (current signal
+            per joint, without the calibrated mean), `collision_thresholds`, `collision_streaks` (longest
+            sequence above the threshold per joint in this episode), `collision_min_samples` and
+            `collision_peaks` (largest absolute value per joint, for logging only).
 
         Raises:
-            ValueError: If `mode` is not "gmo" or "driver".
+            ValueError: If `mode` is not "gmo" or "driver", or the calibration belongs to another mode.
+            FileNotFoundError: If `calibration` does not exist.
         """
-
-        output = driver.get_robot_output()
-
-        if self.collision_episode != self._episode:
-            self.collision_episode = self._episode
-            self.collision_detected_value = False
-            self.collision_peaks = [0.0] * len(thresholds)
-            self.gmo_p0 = None
-
-        if mode == "gmo":
-            model, data = self.gmo_model, self.gmo_data
-            q, v, tau = (np.array(x) for x in (output.joint.arm.positions, output.joint.arm.velocities, output.joint.arm.efforts))
-            time_s = output.header.timestamp * 1e-6
-
-            M = pin.crba(model, data, q)
-            M = np.triu(M) + np.triu(M, 1).T
-            p = M @ v
-
-            if self.gmo_p0 is None:
-                self.gmo_residual, self.gmo_integral, self.gmo_p0, self.gmo_time = np.zeros_like(p), np.zeros_like(p), p, time_s
-
-            dt = time_s - self.gmo_time
-            if dt > 0:
-                beta = pin.computeCoriolisMatrix(model, data, q, v).T @ v - pin.computeGeneralizedGravity(model, data, q)
-                self.gmo_integral += (tau + beta + self.gmo_residual) * dt
-                self.gmo_residual = gain * (p - self.gmo_p0 - self.gmo_integral)
-                self.gmo_time = time_s
-
-            signal = self.gmo_residual
-
-        elif mode == "driver":
-            signal = np.array(output.joint.arm.external_efforts)
-        else:
+        if mode not in ("gmo", "driver"):
             raise ValueError(f"mode must be 'gmo' or 'driver', got {mode!r}")
 
-        self.collision_peaks = [max(peak, abs(float(x))) for peak, x in zip(self.collision_peaks, signal)]
+        output = driver.get_robot_output()
+        time_s = output.header.timestamp * 1e-6  # µs since configuration
 
-        if not self.collision_detected_value and any(peak > t for peak, t in zip(self.collision_peaks, thresholds)):
-            self.collision_detected_value = True
-            self.collision_count += 1
+        if self.collision_episode != self._episode or self.collision_mode != mode:
+            self._start_collision_episode(driver, output, mode, calibration)
+
+        if self.collision_calibration is None:
+            mean, limits = np.zeros(len(thresholds)), np.array(thresholds, dtype=float)
+        else:
+            mean = np.array(self.collision_calibration["mean"])
+            limits = np.maximum(k * np.array(self.collision_calibration["std"]), COLLISION_MIN_THRESHOLD)
+
+        if self.collision_time is None or time_s > self.collision_time:
+            if mode == "gmo":
+                signal = self._update_gmo(output, time_s, gain)
+            else:
+                signal = np.array(output.joint.arm.external_efforts, dtype=float)
+
+            if self.collision_start is None:
+                self.collision_start = time_s
+            self.collision_time = time_s
+            self.collision_values = signal - mean
+
+            if time_s - self.collision_start >= COLLISION_WARMUP_S:
+                above = np.abs(self.collision_values) > limits
+                self.collision_consecutive = np.where(above, self.collision_consecutive + 1, 0)
+                self.collision_streaks = np.maximum(self.collision_streaks, self.collision_consecutive)
+                self.collision_peaks = np.maximum(self.collision_peaks, np.abs(self.collision_values))
+                self.collision_samples.append(signal)
+
+        self.collision_detected_value = self.collision_detected_value or bool((self.collision_streaks >= min_samples).any())
 
         return {
             "collision_mode": mode,
             "collision_detected": self.collision_detected_value,
-            "collision_rate": round(self.collision_count / self.episodes, precision),
-            "collision_thresholds": list(thresholds),
-            "collision_values": [round(peak, precision) for peak in self.collision_peaks],
+            "collision_values": [round(float(x), precision) for x in self.collision_values],
+            "collision_thresholds": [round(float(x), precision) for x in limits],
+            "collision_streaks": self.collision_streaks.tolist(),
+            "collision_min_samples": min_samples,
+            "collision_peaks": [round(float(x), precision) for x in self.collision_peaks],
         }
 
 
     @metric
     def jerks_rate(self, driver: trossen_arm.TrossenArmDriver, joint_jerk_thresholds: list[float] = JOINT_JERK_THRESHOLDS,
-                   linear_jerk_threshold: float = LINEAR_JERK_THRESHOLD,
-                   angular_jerk_threshold: float = ANGULAR_JERK_THRESHOLD, precision: int = 3) -> dict:
-        """Detects jerky motion (abrupt change of acceleration) during the episode.
+                   min_occurrences: int = JERK_MIN_OCCURRENCES, median_window: int = JERK_MEDIAN_WINDOW,
+                   smoothing_window: int = JERK_SMOOTHING_WINDOW, precision: int = 3) -> dict:
+        """Detects jerky motion (abrupt change of acceleration) of the joints during the episode.
 
-        Call at every control step. The jerk is the derivative of the accelerations along the episode;
-        it keeps the peak per joint and for the end effector, and flags the episode when any peak
-        exceeds its threshold.
+        Call at every control step. The joint accelerations go through a causal median filter (removes
+        single-sample spikes) and a moving average (reduces noise), and the jerk is the gradient of the
+        filtered signal. Each time the absolute jerk of a joint goes above its threshold counts as one
+        occurrence (it has to come back down to count again). The episode is flagged when a same joint
+        reaches `min_occurrences`.
+
+        The windows are in samples: the first `median_window + smoothing_window` calls of an episode
+        (minus one) return zero jerk, and the filters delay the signal by about
+        `(median_window + smoothing_window) / 2 - 1` samples. Calls with a repeated timestamp are ignored.
 
         Args:
             driver: Connected Trossen arm driver, read at each call.
             joint_jerk_thresholds: Maximum accepted jerk per joint, in rad/s^3 (m/s^3 for the gripper).
-            linear_jerk_threshold: Maximum accepted end-effector linear jerk, in m/s^3.
-            angular_jerk_threshold: Maximum accepted end-effector angular jerk, in rad/s^3.
+            min_occurrences: Occurrences of a same joint needed to flag the episode.
+            median_window: Samples of the median filter. Read at the first call of each episode.
+            smoothing_window: Samples of the moving average. Read at the first call of each episode.
             precision: Decimal places used to round the returned values.
 
         Returns:
-            dict with `jerks_detected` (this episode), `jerks_rate` (fraction of the episodes with jerks so far),
-            `jerks_thresholds` and `jerks_values` (peaks per joint, then linear and angular).
+            dict with `jerks_detected` (this episode), `jerks_values` (current jerk per joint, signed),
+            `jerks_thresholds`, `jerks_exceedances` (occurrences per joint in this episode) and
+            `jerks_min_occurrences`.
         """
 
         output = driver.get_robot_output()
-        joint_accelerations = list(output.joint.all.accelerations)
-        n_joints = len(joint_accelerations)
-
-        thresholds = list(joint_jerk_thresholds) + [linear_jerk_threshold, angular_jerk_threshold]
+        accelerations = np.array(output.joint.all.accelerations, dtype=float)
+        time_s = output.header.timestamp * 1e-6  # µs since configuration
 
         if self.jerks_episode != self._episode:
             self.jerks_episode = self._episode
-            self.jerks_trials += 1
             self.jerks_detected_value = False
-            self.jerks_peaks = [0.0] * len(thresholds)
-            self.jerks_times = []
-            self.jerks_accelerations = []
+            self.jerks_values = [0.0] * len(accelerations)
+            self.jerks_exceedances = np.zeros(len(accelerations), dtype=int)
+            self.jerks_above = np.zeros(len(accelerations), dtype=bool)
+            self.jerks_raw = deque(maxlen=median_window)
+            self.jerks_medians = deque(maxlen=smoothing_window)
+            self.jerks_smoothed = None
+            self.jerks_time = None
 
-        time_s = output.header.timestamp * 1e-6  # µs since configuration
+        if self.jerks_time is None or time_s > self.jerks_time:  # the gradient divides by dt
+            previous_time, self.jerks_time = self.jerks_time, time_s
+            self.jerks_raw.append(accelerations)
 
-        if not self.jerks_times or time_s > self.jerks_times[-1]:  # the gradient divides by dt
-            self.jerks_times.append(time_s)
-            self.jerks_accelerations.append(joint_accelerations + list(output.cartesian.accelerations))
+            if len(self.jerks_raw) == self.jerks_raw.maxlen:
+                self.jerks_medians.append(np.median(self.jerks_raw, axis=0))
 
-        if len(self.jerks_times) >= 2:
-            jerk = np.gradient(np.array(self.jerks_accelerations), np.array(self.jerks_times), axis=0)
-            values = list(np.abs(jerk[:, :n_joints]).max(axis=0))
-            values.append(np.linalg.norm(jerk[:, n_joints:n_joints + 3], axis=1).max())
-            values.append(np.linalg.norm(jerk[:, n_joints + 3:], axis=1).max())
-            self.jerks_peaks = [max(peak, float(value)) for peak, value in zip(self.jerks_peaks, values)]
+            if len(self.jerks_medians) == self.jerks_medians.maxlen:
+                previous, self.jerks_smoothed = self.jerks_smoothed, np.mean(self.jerks_medians, axis=0)
+                
+                if previous is not None:
+                    jerk = np.gradient(np.stack([previous, self.jerks_smoothed]), [previous_time, time_s], axis=0)[-1]
+                    above = np.abs(jerk) > np.array(joint_jerk_thresholds)
+                    self.jerks_exceedances += above & ~self.jerks_above
+                    self.jerks_above = above
+                    self.jerks_values = jerk.tolist()
 
-        if not self.jerks_detected_value and any(p > t for p, t in zip(self.jerks_peaks, thresholds)):
-            self.jerks_detected_value = True
-            self.jerks_count += 1
+        self.jerks_detected_value = self.jerks_detected_value or bool((self.jerks_exceedances >= min_occurrences).any())
 
         return {
             "jerks_detected": self.jerks_detected_value,
-            "jerks_rate": round(self.jerks_count / self.jerks_trials, precision),
-            "jerks_thresholds": thresholds,
-            "jerks_values": [round(peak, precision) for peak in self.jerks_peaks],
+            "jerks_values": [round(value, precision) for value in self.jerks_values],
+            "jerks_thresholds": list(joint_jerk_thresholds),
+            "jerks_exceedances": self.jerks_exceedances.tolist(),
+            "jerks_min_occurrences": min_occurrences,
         }
 
 

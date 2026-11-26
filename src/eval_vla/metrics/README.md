@@ -25,7 +25,7 @@ Estrutura usada para cada método:
 
   | Variável | Descrição |
   |---|---|
-  | `task_name` | Tarefa avaliada (atualmente apenas `"Organize_the_table"`). |
+  | `task_name` | Tarefa avaliada (atualmente apenas `"Organize_the_table"`). Aceita variações de maiúsculas, separadores (espaço, `_`, `-`, CamelCase), artigos e pequenos erros de digitação (ex.: `"organise the table"`). Nomes desconhecidos geram um aviso e contam como falha. |
   | `task_mode` | `"model_segmentation"` ou `"image_diff"`. |
   | `before_frame` | Imagem da mesa logo antes de a política agir. |
   | `after_frame` | Imagem da mesa logo depois de a política agir. |
@@ -73,7 +73,7 @@ Estrutura usada para cada método:
 
 ## Operation
 
-`operation.py` — Métricas operacionais: taxa de intervenção humana, taxa de colisão, taxa de jerks (movimentos bruscos) e taxa de falha de reset.
+`operation.py` — Métricas operacionais: taxa de intervenção humana, detecção de colisão, detecção de jerks (movimentos bruscos) e taxa de falha de reset.
 
 ### `human_intervention_rate`
 
@@ -96,37 +96,40 @@ Estrutura usada para cada método:
 
 ### `collision_rate`
 
-- **Para que serve:** Detectar contato não intencional (colisão) durante o episódio a partir dos torques das juntas do braço.
-- **O que faz:** Chamar a cada passo de controle. Guarda o pico do sinal por junta ao longo do episódio e marca colisão quando algum pico passa do limite. Modos (`mode`):
-  - `"gmo"`: observador de momento generalizado. O resíduo estima o torque externo usando o modelo dinâmico do braço (URDF) e as posições, velocidades e esforços medidos.
-  - `"driver"`: usa os esforços externos já informados pelo driver do braço.
+- **Para que serve:** Detectar contato não intencional (colisão) durante o episódio a partir dos torques das juntas.
+- **O que faz:** Chamar a cada passo de controle. No modo `"gmo"`, um observador de momento generalizado estima o torque externo com o modelo dinâmico (URDF, com o efetuador e o atrito configurados no driver) e as posições, velocidades, acelerações e esforços medidos; no modo `"driver"`, usa os esforços externos informados pelo driver. A colisão é validada quando o sinal de uma mesma junta fica acima do limite por `min_samples` chamadas consecutivas. Os primeiros 0,5 s de cada episódio e timestamps repetidos são ignorados.
+- **Calibração (recomendada):** rode um episódio representativo **sem contato** e chame `operation.save_collision_calibration("calibration/collision_gmo.json")` antes de `end_episode()`; depois passe o arquivo em `calibration`. No exemplo: `uv run -m examples.operation_eval --calibrate_collision`. Para conferir o modelo com o braço parado: `uv run -m examples.collision_model_check`.
 - **Variáveis de entrada:**
 
   | Variável | Descrição |
   |---|---|
-  | `driver` | Driver do braço Trossen conectado, lido a cada chamada. |
+  | `driver` | Driver do braço Trossen conectado, lido a cada chamada. O efetuador configurado nele precisa ser o físico. |
   | `mode` | `"gmo"` ou `"driver"`. |
-  | `thresholds` | Valor absoluto máximo aceito por junta do braço, em Nm. |
+  | `thresholds` | Valor absoluto máximo aceito por junta do braço, em Nm, quando não há `calibration`. |
   | `gain` | Ganho K_O do observador no modo `"gmo"`, em 1/s. Valores maiores reagem mais rápido, mas adicionam ruído. |
   | `precision` | Casas decimais usadas para arredondar os valores retornados. |
+  | `calibration` | JSON da calibração: subtrai a média de cada junta e usa o limite `max(k·σ, 0,5 Nm)`. Lido na primeira chamada de cada episódio. |
+  | `k` | Número de desvios-padrão do limite calibrado (padrão 5). |
+  | `min_samples` | Amostras consecutivas acima do limite que validam a colisão (padrão 5). |
 
-- **Retorno:** dict com `collision_mode`, `collision_detected` (neste episódio), `collision_rate` (fração dos `episodes` com colisão até agora), `collision_thresholds` e `collision_values` (pico por junta). Levanta `ValueError` se `mode` não for `"gmo"` nem `"driver"`.
+- **Retorno:** dict com `collision_mode`, `collision_detected` (neste episódio), `collision_values` (sinal atual por junta, sem a média), `collision_thresholds`, `collision_streaks` (maior sequência acima do limite por junta), `collision_min_samples` e `collision_peaks` (maior valor absoluto, só para registro). Levanta `ValueError` para modo inválido ou calibração de outro modo, e `FileNotFoundError` se o arquivo não existir.
 
 ### `jerks_rate`
 
-- **Para que serve:** Detectar movimento brusco (mudança abrupta de aceleração) durante o episódio.
-- **O que faz:** Chamar a cada passo de controle. O jerk é a derivada das acelerações ao longo do episódio; guarda o pico por junta e do efetuador final, e marca o episódio quando algum pico passa do limite.
+- **Para que serve:** Detectar movimento brusco (mudança abrupta de aceleração) das juntas durante o episódio.
+- **O que faz:** Chamar a cada passo de controle. As acelerações das juntas passam por uma mediana móvel (remove picos de 1 amostra) e uma média móvel (reduz ruído); o jerk é o gradiente do sinal filtrado. Cada vez que o `|jerk|` de uma junta passa do limite conta 1 ocorrência (precisa voltar para baixo para contar de novo). O episódio é marcado quando uma mesma junta atinge `min_occurrences`. As primeiras `median_window + smoothing_window - 1` chamadas do episódio retornam jerk zero, e chamadas com timestamp repetido são ignoradas.
 - **Variáveis de entrada:**
 
   | Variável | Descrição |
   |---|---|
   | `driver` | Driver do braço Trossen conectado, lido a cada chamada. |
-  | `joint_jerk_thresholds` | Jerk máximo aceito por junta, em rad/s³ (m/s³ para a garra). |
-  | `linear_jerk_threshold` | Jerk linear máximo aceito do efetuador final, em m/s³. |
-  | `angular_jerk_threshold` | Jerk angular máximo aceito do efetuador final, em rad/s³. |
+  | `joint_jerk_thresholds` | Jerk máximo aceito por junta, em rad/s³ (m/s³ para a garra). Com o filtro os valores ficam menores; calibre no robô. |
+  | `min_occurrences` | Ocorrências de uma mesma junta para marcar o episódio (padrão 3). |
+  | `median_window` | Amostras da mediana móvel (padrão 3). Lido na primeira chamada de cada episódio. |
+  | `smoothing_window` | Amostras da média móvel (padrão 5). Lido na primeira chamada de cada episódio. |
   | `precision` | Casas decimais usadas para arredondar os valores retornados. |
 
-- **Retorno:** dict com `jerks_detected` (neste episódio), `jerks_rate` (fração dos episódios com jerks até agora), `jerks_thresholds` e `jerks_values` (picos por junta, depois linear e angular).
+- **Retorno:** dict com `jerks_detected` (neste episódio), `jerks_values` (jerk atual por junta, com sinal), `jerks_thresholds`, `jerks_exceedances` (ocorrências por junta no episódio) e `jerks_min_occurrences`. No CSV, `jerks_values` é o do último passo do episódio.
 
 ### `reset_failure_rate`
 

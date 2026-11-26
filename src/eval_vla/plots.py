@@ -141,22 +141,21 @@ def plot_statistical(csv_path: str | Path, out_dir: str | Path, title: str = "")
         return _save(fig, out_dir, "statistical")
 
 
-def _peaks(ax, data: dict, values: str, thresholds: str, names: list[str] | None, title: str, log: bool = False) -> None:
-    """Largest value of each joint/axis over the episodes, against its threshold."""
-    rows = [v for v in data.get(values, []) if v]
-    if not rows or not _has(data, thresholds):
+def _joint_counts(ax, data: dict, column: str, limit_column: str, title: str, ylabel: str, gripper: bool = False) -> None:
+    """Largest count of each joint over the episodes, against the count that flags an episode."""
+    rows = [v for v in data.get(column, []) if v]
+    if not rows or not _has(data, limit_column):
         return _empty(ax, title)
 
-    peak = np.max(np.array(rows, dtype=float), axis=0)
-    limit = np.array(data[thresholds][-1], dtype=float)
-    x = np.arange(len(peak))
-    ax.bar(x, peak, width=0.6, color=[COLORS["red"] if p > t else COLORS["blue"] for p, t in zip(peak, limit)])
-    ax.hlines(limit, x - 0.4, x + 0.4, color="black", lw=2, label="threshold")
-    ax.set_xticks(x, names or [str(i) for i in x], rotation=45, ha="right")
-    ax.set(title=title, ylabel="peak value")
-    if log:
-        ax.set_yscale("symlog", linthresh=1)
-    ax.set_ylim(top=ax.get_ylim()[1] * (4 if log else 1.2))  # headroom for the legend
+    counts = np.max(np.array(rows, dtype=int), axis=0)
+    limit = int(data[limit_column][-1])
+    x = np.arange(len(counts))
+    names = [f"joint_{i}" for i in range(len(counts) - gripper)] + ["gripper"] * gripper
+    ax.bar(x, counts, width=0.6, color=[COLORS["red"] if c >= limit else COLORS["blue"] for c in counts])
+    ax.axhline(limit, color="black", lw=2, label="detection")
+    ax.set_xticks(x, names, rotation=45, ha="right")
+    ax.set(title=title, ylabel=ylabel, ylim=(0, max(counts.max(), limit) * 1.3))
+    ax.yaxis.get_major_locator().set_params(integer=True)
     ax.legend(loc="upper right")
 
 
@@ -170,7 +169,7 @@ def plot_operation(csv_path: str | Path, out_dir: str | Path, title: str = "") -
         episodes = np.array(data.get("episode", []))
 
         ax = axes[0, 0]
-        rates = [("collision_rate", "collision"), ("jerks_rate", "jerk"), ("reset_failure_rate", "reset failure"),
+        rates = [("reset_failure_rate", "reset failure"),
                  ("human_intervention_rate", "human intervention")]
         shown = [(column, label) for column, label in rates if column in data]
         if shown:
@@ -182,13 +181,10 @@ def plot_operation(csv_path: str | Path, out_dir: str | Path, title: str = "") -
         else:
             _empty(ax, "Operation rates")
 
-        n_collision = len(data["collision_values"][-1]) if data.get("collision_values") and data["collision_values"][-1] else 0
-        n_jerk = len(data["jerks_values"][-1]) if data.get("jerks_values") and data["jerks_values"][-1] else 0
-        _peaks(axes[0, 1], data, "collision_values", "collision_thresholds",
-               [f"joint_{i}" for i in range(n_collision)], "Collision peaks (GMO residual, Nm)")
-        _peaks(axes[0, 2], data, "jerks_values", "jerks_thresholds",
-               [f"joint_{i}" for i in range(n_jerk - 3)] + ["gripper", "linear", "angular"] if n_jerk >= 3 else None,
-               "Jerk peaks", log=True)
+        _joint_counts(axes[0, 1], data, "collision_streaks", "collision_min_samples",
+                      "Collision: longest streak (worst episode)", "consecutive samples")
+        _joint_counts(axes[0, 2], data, "jerks_exceedances", "jerks_min_occurrences",
+                      "Jerk occurrences (worst episode)", "occurrences", gripper=True)
 
         ax = axes[1, 0]
         if _has(data, "human_intervention_sec"):

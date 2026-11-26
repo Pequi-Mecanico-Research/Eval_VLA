@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import numpy as np
 import time
+import warnings
 from statistics import NormalDist
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from ..config import SetupConfig
 from ..plots import plot_statistical
 from ..success_detection.background_subtraction import count_objects_in_rois, debug_pipeline
 from ..success_detection.open_vocab_detection import ObjectDetection
+from ..tasks import TASKS, resolve_task_name
 
 
 def _round(value: float, precision: int) -> float:
@@ -58,7 +60,9 @@ class Statistical(EvalVLA):
               (empty table). Needs `reference_frame` and `rois`.
 
         Args:
-            task_name: Task being evaluated (currently only "Organize_the_table").
+            task_name: Task being evaluated (currently only "Organize_the_table"). Variations in case,
+                separators and small typos are accepted (see `tasks.resolve_task_name`). Unknown names
+                emit a warning and count as failure.
             task_mode: "model_segmentation" or "image_diff".
             before_frame: Table image right before the policy acts.
             after_frame: Table image right after the policy acts.
@@ -80,7 +84,7 @@ class Statistical(EvalVLA):
             dict with `successes` (bool), `objects_on_table_before` and
             `objects_in_container_after` (int, or None for unknown tasks).
         """
-        if task_name == "Organize_the_table":    
+        if resolve_task_name(task_name) == "Organize_the_table":
             if task_mode == "model_segmentation":
                 self.detector = self.detector or ObjectDetection("image", model=model, weights=weights, imgsz=imgsz, conf=conf)
                 before = self.detector.run(before_frame, prompt, rois)
@@ -95,6 +99,7 @@ class Statistical(EvalVLA):
                     for name, frame in (("before", before_frame), ("after", after_frame)):
                         debug_pipeline(frame, reference_frame, rois, save_path=self.output_dir / f"ep{self._episode}_{name}_debug.png")
         else:
+            warnings.warn(f"Unknown task {task_name!r}, counting as failure. Known tasks: {list(TASKS)}", stacklevel=3)
             self.success_rate_value = False
             before = None
             after = None

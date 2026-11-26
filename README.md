@@ -127,13 +127,14 @@ for ep in range(n_episodes):
         stats.inference_latency(inference_start, time.perf_counter(), steps_per_episode=steps_per_episode)
 
         external_efforts = dict(zip(JOINT_NAMES, (round(e, 2) for e in driver.get_all_external_efforts())))
+        # calibração opcional (recomendada): calibration="calibration/collision_gmo.json", ver metrics/README.md
         operation.collision_rate(driver, mode="gmo")  # detecção de colisão pelo momento generalizado (GMO)
         operation.jerks_rate(driver)
 
         view.update(
             external_effort=external_efforts,
             gmo_residual=dict(zip(JOINT_NAMES, operation.gmo_residual)),
-            jerk_peaks=dict(zip([*JOINT_NAMES, "linear", "angular"], operation.jerks_peaks)),
+            jerk=dict(zip(JOINT_NAMES, operation.jerks_values)),
         )
 
     stats.task_completion_time(start_time, time.perf_counter())
